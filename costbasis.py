@@ -71,6 +71,26 @@ def compute_net_position(transactions: pd.DataFrame) -> pd.DataFrame:
     return transactions
 
 
+def set_transactions_period(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Add period index to each transaction.
+
+    A period is marked by a selling event. At the end of the period, the lots
+    accumulated up to then are merged into a single one.
+
+    """
+    period = 0
+
+    def set_period(row):
+        """Set period for each row"""
+        global period           # modify outside of scope variable
+        if row["type"] == "sell":
+            period += 1
+        return period
+
+    transactions["period"] = transactions.apply(set_period, axis=1)
+    return transactions
+
+
 def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     """Compute average cost basis for all inventories.
 
@@ -141,7 +161,7 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
             ].sum()
             return inventory_cost
         elif r["type"] == "sell":
-            # when selling, inventory cost is computed from average cost
+            # when selling, inventory cost is the last cost basis from the previous period
             return np.NaN
         else:
             raise RuntimeError("Not implemented yet!")
@@ -176,5 +196,6 @@ if __name__ == '__main__':
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     transactions = compute_net_position(transactions)
+    transactions = set_transactions_period(transactions)
     transactions = compute_average_cost(transactions)
     print(transactions)
