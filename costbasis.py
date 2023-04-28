@@ -1,7 +1,7 @@
 """Process the investments transactions csv.
 
 Add cost basis information.
-The cost basis used is the /average cost/.
+The cost basis used is the *average cost*.
 
 """
 import pandas as pd
@@ -76,20 +76,22 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
 
     Each commodity, or asset, is treated as an inventory. The cost of each
     inventory item is computed based on a weighted average of the /purchases/ on
-    the period.  See [1] for some explanation.
+    the period.  See [1]_ for some explanation.
 
     Some terms:
 
-        1. cost: how much we pay for the items in the inventory.
-        2. inventory: collection of items that were purchased in different
-        quantities and with different cost.
-        3. price: what the market asked for.
+    1. cost: how much we pay for the items in the inventory.
+    2. inventory: collection of items that were purchased in different
+    quantities and with different cost.
+    3. price: what the market asked for.
 
     The period is marked by a selling event. When we sell, the inventory lots
     are grouped into a new lot with a cost associated with. Next inventory
     additions will begin from this point. So we need to track the periods.
 
-    Exemple of two lots purchase of the AAAA inventory:
+    Example
+    -------
+    Exemple of two lots purchase of the AAAA inventory::
 
                 date ticker  price  vol   total  inventory  inventory cost  avg cost
            2021-01-01  AAAA   10.0  100  1000.0        100    1000.0           10.00
@@ -100,7 +102,7 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     selling, the lots are merged into a single one with cost determined by this
     average cost.
 
-    For example, a selling transaction:
+    For example, a selling transaction::
 
                 date ticker  price  vol   total  inventory  inventory cost*  avg cost*  period
            2021-01-03  AAAA   13.0  -50  -650.0        150   (* 150 11)1650        11        1
@@ -110,14 +112,14 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     transactions, period 0.  It is the last 'avg cost' from the period.  We also
     update the period count to 1 now.
 
-    With that we can compute a capital gain,
+    With that we can compute a capital gain,::
 
         2021-01-03 * Sell AAAA
             assets:stocks:AAAA  -50 AAAA @ 11.00  ; = 550 here we use our average cost basis
             assets:cash  650 ; debit this value to the cash account
             income:capital gain:AAAA  -100 ; credit the income the rest, which we may pay taxes
 
-    After that, we make another purchase,
+    After that, we make another purchase,::
 
                 date ticker  price  vol   total    inventory      inventory cost            avg cost  period
            2021-01-04  AAAA   9.0   50    450.0          200    (+ 1650 450)2100  (/ 2100 200.0)10.5       1
@@ -125,20 +127,21 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     Notice that the 'inventory cost' uses information only from the respective
     period 1.
 
-    [1] https://www.investopedia.com/terms/a/averagecostmethod.asp
+    .. [1] https://www.investopedia.com/terms/a/averagecostmethod.asp
     """
     transactions["total"] = transactions["vol"] * transactions["price"]
 
     def compute_inventory_cost(r):
         """Compute total cost of inventory of each commodity for a period."""
         if r["type"] == "buy":
-            acc_purchase_cost = transactions.loc[
+            inventory_cost = transactions.loc[
                 (transactions["ticker"] == r["ticker"])
                 & (transactions["date"] <= r["date"]),
                 "total",
             ].sum()
-            return acc_purchase_cost
+            return inventory_cost
         elif r["type"] == "sell":
+            # when selling, inventory cost is computed from average cost
             return np.NaN
         else:
             raise RuntimeError("Not implemented yet!")
@@ -169,8 +172,9 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     return transactions
 
 
-transactions = collect_transactions(files)
-transactions = adjust_volume(transactions)
-transactions = compute_net_position(transactions)
-transactions = compute_average_cost(transactions)
-print(transactions)
+if __name__ == '__main__':
+    transactions = collect_transactions(files)
+    transactions = adjust_volume(transactions)
+    transactions = compute_net_position(transactions)
+    transactions = compute_average_cost(transactions)
+    print(transactions)
