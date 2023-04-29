@@ -71,26 +71,6 @@ def compute_net_position(transactions: pd.DataFrame) -> pd.DataFrame:
     return transactions
 
 
-def set_transactions_period(transactions: pd.DataFrame) -> pd.DataFrame:
-    """Add period index to each transaction.
-
-    A period is marked by a selling event. At the end of the period, the lots
-    accumulated up to then are merged into a single one.
-
-    """
-    period = 0
-
-    def set_period(row):
-        """Set period for each row"""
-        global period           # modify outside of scope variable
-        if row["type"] == "sell":
-            period += 1
-        return period
-
-    transactions["period"] = transactions.apply(set_period, axis=1)
-    return transactions
-
-
 def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     """Compute average cost basis for all inventories.
 
@@ -151,51 +131,57 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
     """
     transactions["total"] = transactions["vol"] * transactions["price"]
 
-    def compute_inventory_cost(r):
-        """Compute total cost of inventory of each commodity for a period."""
-        if r["type"] == "buy":
-            inventory_cost = transactions.loc[
+    def inventory_total(r):
+        period_total = transactions.loc[
                 (transactions["ticker"] == r["ticker"])
-                & (transactions["date"] <= r["date"]),
+                & (transactions["date"] <= r["date"])
+                & (transactions["period"] == r["period"])
+                & (transactions["type"] != "sell"),
                 "total",
             ].sum()
-            return inventory_cost
-        elif r["type"] == "sell":
-            # when selling, inventory cost is the last cost basis from the previous period
-            return np.NaN
-        else:
-            raise RuntimeError("Not implemented yet!")
-
-    def comppute_selling_lot(r):
-        if r["type"] == "sell":
-            # query for this ticker and date less than the trade
-            last_avg_cost = transactions.loc[
-                (transactions["ticker"] == r["ticker"])
-                & (transactions["date"] < r["date"]),
-                "avg cost",
-            ]
-            print(last_avg_cost)
-
-            # # sort by date
-            # last_avg_cost.sort_values(by="date", ascending=False)
-            # # return the first one
-
-            # return last_avg_cost[0], np.NaN
+        if r["type"] == "buy":
             pass
-        
+        elif r["type"] == "sell":
+            pass
+        return r
 
-    transactions["inventory cost"] = transactions.apply(compute_inventory_cost, axis=1)
-    # transactions["avg cost"] = transactions["inventory cost"] / transactions["inventory"]
-    # transactions[["prev avg cost", "new lot cost"]] = transactions.apply(
-    #     compute_selling_lot, axis=1
-    # )
+    transactions = transactions.apply(inventory_total, axis=1)
     return transactions
 
 
-if __name__ == '__main__':
+class Inventory:
+    """Defines the inventory object which collect multiple items.
+
+    Each inventory items can have multiple lots and each lot contains its own
+    information about date, quantity and cost.
+
+    """
+    def __init__(self, transactions: pd.DataFrame):
+        groups = transactions.groupby(by="ticker")
+        self.items = [groups.get_group(x) for x in groups.groups]
+        self._set_lots_epochs()
+
+    def _set_lots_epochs(self):
+        """Add an 'epoch' to each lot for each item in the inventory."""
+        for item in self.items:
+            epoch = 0
+            for idx, lots in item.iterrows():
+                if lots["type"] == "buy":
+                    item.loc[idx, "epoch"] = epoch
+                if lots["type"] == "sell":
+                    # sell event mark the beginning of new epoch
+                    epoch += 1
+                    item.loc[idx, "epoch"] = epoch
+
+            # item["epoch"] = item["epoch"].astype(int)
+
+
+if __name__ == "__main__":
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
-    transactions = compute_net_position(transactions)
-    transactions = set_transactions_period(transactions)
-    transactions = compute_average_cost(transactions)
-    print(transactions)
+    inventory = Inventory(transactions)
+
+    print(inventory.items[0])
+    print(inventory.items[1])
+    # transactions = compute_average_cost(transactions)
+    # print(transactions)
