@@ -150,47 +150,74 @@ def compute_average_cost(transactions: pd.DataFrame) -> pd.DataFrame:
 
 
 class Inventory:
-    """Defines the inventory object which collect multiple items.
-
-    Each inventory items can have multiple lots and each lot contains its own
-    information about date, quantity and cost.
-
-    """
+    """Defines the inventory object to keep track of commodity lots."""
     def __init__(self, transactions: pd.DataFrame):
-        self.items = self._create_inventory_list(transactions)
-        self._set_lots_epochs()
+        self.transactions = transactions.copy()
+        self._set_transactions_epochs()
+        self._compute_transaction_cost()
+        self._compute_inventory_cost()
 
-    def _create_inventory_list(self, transactions: pd.DataFrame) -> list[pd.DataFrame]:
-        """Create a list with each inventory lot"""
-        groups = transactions.groupby(by="ticker")
-        items = [groups.get_group(x) for x in groups.groups]
-        return items
-
-    def _set_lots_epochs(self):
+    def _set_transactions_epochs(self) -> None:
         """Add an 'epoch' to each lot for each item in the inventory.
 
         The epochs are marked by a selling event.
 
         """
-        for item in self.items:
-            epoch = 0
-            # initialize epoch column
-            item.insert(len(item.columns), "epoch", 0)
+        self.transactions.loc[:, "epoch"] = (
+            self.transactions["type"] == "sell"
+        ).cumsum()
 
-            for idx, lots in item.iterrows():
-                if lots["type"] == "buy":
-                    item.loc[idx, "epoch"] = epoch
-                if lots["type"] == "sell":
-                    # sell event mark the beginning of new epoch
-                    epoch += 1
-                    item.loc[idx, "epoch"] = epoch
+    def _compute_transaction_cost(self) -> pd.DataFrame:
+        """Compute the total cost for each transaction."""
+        self.transactions["transaction cost"] = (
+            self.transactions["vol"] * self.transactions["price"]
+        )
+
+    def _compute_inventory_cost(self) -> pd.DataFrame:
+        """Compute the total inventory cost for each transaction.
+
+        The inventory cost is the current total cost of all lots in the inventory.
+
+        """
+        for trade in self.transactions.itertuples():
+            idx = trade.Index 
+            if trade.type == "sell":
+                # selling trade mark the beginning of a new epoch
+                # the inventory cost is:
+                # inventory cost from previous epoch - average cost of previous epoch * selling volume
+                previous_inv_cost = self.transactions.loc[
+                    (self.transactions["epoch"] == trade.epoch - 1), "transaction cost"
+                ].sum()
+                previous_inventory = self.transactions.loc[
+                    (self.transactions["epoch"] == trade.epoch - 1), "vol"
+                ].sum()
+                previous_average_cost = previous_inv_cost / previous_inventory
+                # trade volume is already negative
+                self.transactions.loc[idx, "inventory cost"] = (
+                    previous_inv_cost + previous_average_cost * trade.vol
+                )
+
+            if trade.type == "buy":
+                # Add transaction cost for this epoch
+                self.transactions.loc[idx, "inventory cost"] = self.transactions.loc[
+                    # include the trade date
+                    (self.transactions["date"] <= trade.date)
+                    & (self.transactions["epoch"] == trade.epoch),
+                    "transaction cost"
+                ].sum()
+
+
+def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
+    """Create a list with each inventory transaction data"""
+    groups = transactions.groupby(by="ticker")
+    aggregate_inventory = [Inventory(groups.get_group(x)) for x in groups.groups]
+    return aggregate_inventory
+
 
 if __name__ == "__main__":
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
-    inventory = Inventory(transactions)
+    aggregated_inventory = generate_aggregate_inventory(transactions)
 
-    print(inventory.items[0])
-    print(inventory.items[1])
-    # transactions = compute_average_cost(transactions)
-    # print(transactions)
+    print(aggregated_inventory[0].transactions)
+    print(aggregated_inventory[1].transactions)
