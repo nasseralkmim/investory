@@ -167,10 +167,14 @@ class Inventory:
         return items
 
     def _set_lots_epochs(self):
-        """Add an 'epoch' to each lot for each item in the inventory."""
+        """Add an 'epoch' to each lot for each item in the inventory.
+
+        The epochs are marked by a selling event.
+
+        """
         for item in self.items:
             epoch = 0
-            # initialize epoch colunm
+            # initialize epoch column
             item.insert(len(item.columns), "epoch", 0)
 
             for idx, lots in item.iterrows():
@@ -186,7 +190,7 @@ if __name__ == "__main__":
     transactions = adjust_volume(transactions)
     inventory = Inventory(transactions)
 
-    print(inventory.items[0].dtypes)
+    print(inventory.items[0])
     print(inventory.items[1])
     # transactions = compute_average_cost(transactions)
     # print(transactions)
