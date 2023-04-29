@@ -157,14 +157,22 @@ class Inventory:
 
     """
     def __init__(self, transactions: pd.DataFrame):
-        groups = transactions.groupby(by="ticker")
-        self.items = [groups.get_group(x) for x in groups.groups]
+        self.items = self._create_inventory_list(transactions)
         self._set_lots_epochs()
+
+    def _create_inventory_list(self, transactions: pd.DataFrame) -> list[pd.DataFrame]:
+        """Create a list with each inventory lot"""
+        groups = transactions.groupby(by="ticker")
+        items = [groups.get_group(x) for x in groups.groups]
+        return items
 
     def _set_lots_epochs(self):
         """Add an 'epoch' to each lot for each item in the inventory."""
         for item in self.items:
             epoch = 0
+            # initialize epoch colunm
+            item.insert(len(item.columns), "epoch", 0)
+
             for idx, lots in item.iterrows():
                 if lots["type"] == "buy":
                     item.loc[idx, "epoch"] = epoch
@@ -173,15 +181,12 @@ class Inventory:
                     epoch += 1
                     item.loc[idx, "epoch"] = epoch
 
-            # item["epoch"] = item["epoch"].astype(int)
-
-
 if __name__ == "__main__":
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory = Inventory(transactions)
 
-    print(inventory.items[0])
+    print(inventory.items[0].dtypes)
     print(inventory.items[1])
     # transactions = compute_average_cost(transactions)
     # print(transactions)
