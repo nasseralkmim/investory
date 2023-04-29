@@ -155,6 +155,7 @@ class Inventory:
         self.transactions = transactions.copy()
         self._set_transactions_epochs()
         self._compute_transaction_cost()
+        self._set_inventory()
         self._compute_inventory_cost()
 
     def _set_transactions_epochs(self) -> None:
@@ -173,38 +174,73 @@ class Inventory:
             self.transactions["vol"] * self.transactions["price"]
         )
 
+    def _set_inventory(self):
+        self.transactions["inventory"] = (
+            self.transactions["vol"].cumsum()
+        )
+
     def _compute_inventory_cost(self) -> pd.DataFrame:
         """Compute the total inventory cost for each transaction.
 
         The inventory cost is the current total cost of all lots in the inventory.
 
         """
-        for trade in self.transactions.itertuples():
-            idx = trade.Index 
-            if trade.type == "sell":
-                # selling trade mark the beginning of a new epoch
-                # the inventory cost is:
-                # inventory cost from previous epoch - average cost of previous epoch * selling volume
-                previous_inv_cost = self.transactions.loc[
-                    (self.transactions["epoch"] == trade.epoch - 1), "transaction cost"
-                ].sum()
-                previous_inventory = self.transactions.loc[
-                    (self.transactions["epoch"] == trade.epoch - 1), "vol"
-                ].sum()
-                previous_average_cost = previous_inv_cost / previous_inventory
-                # trade volume is already negative
-                self.transactions.loc[idx, "inventory cost"] = (
-                    previous_inv_cost + previous_average_cost * trade.vol
-                )
+        # divide the data frame for each epoch
+        epoch_groups = self.transactions.groupby("epoch")
+        epoch_trades = [epoch_groups.get_group(x) for x in epoch_groups.groups]
 
-            if trade.type == "buy":
-                # Add transaction cost for this epoch
-                self.transactions.loc[idx, "inventory cost"] = self.transactions.loc[
-                    # include the trade date
-                    (self.transactions["date"] <= trade.date)
-                    & (self.transactions["epoch"] == trade.epoch),
-                    "transaction cost"
-                ].sum()
+        # process each epoch separetely
+        for epoch, trades in enumerate(epoch_trades):
+            # first epoch has no selling
+            if epoch == 0:
+                self.transactions.loc[
+                    self.transactions["epoch"] == epoch, "inventory cost"
+                ] = trades["transaction cost"].cumsum()
+
+                self.transactions.loc[
+                    self.transactions["epoch"] == epoch, "average cost"
+                ] = trades["transaction cost"].cumsum() / trades["vol"].cumsum()
+
+                # go to next epoch
+                continue
+
+            # this is performed trade by trade on each epoch
+            for trade in trades.itertuples():
+                if trade.type == "sell":
+                    # selling event gets its inventory cost based on average cost from
+                    # previous epoch
+                    previous_avg_cost = self.transactions.loc[
+                        self.transactions["epoch"] == epoch - 1, "average cost"
+                    ].iloc[-1]
+
+                    self.transactions.loc[trade.Index, "average cost"] = previous_avg_cost
+
+                    previous_inventory_cost = self.transactions.loc[
+                        self.transactions["epoch"] == epoch - 1, "inventory cost"
+                        ].iloc[-1]
+
+                    self.transactions.loc[trade.Index, "inventory cost"] = (
+                        previous_avg_cost * trade.vol + previous_inventory_cost
+                    )
+
+                if trade.type == "buy":
+                    # add the inventory cost after the selling transaction
+                    inventory_cost_after_selling = self.transactions.loc[
+                        (self.transactions["epoch"] == epoch)
+                        & (self.transactions["type"] == "sell"), 
+                        "inventory cost"
+                    ].iloc[-1]
+
+                    # consider the index
+                    # TODO: maybe better to use `iterrows()`
+                    id = self.transactions.columns.get_loc("transaction cost") + 1
+                    self.transactions.loc[trade.Index, "inventory cost"] = (
+                        trade[id] + inventory_cost_after_selling
+                    )
+
+                    self.transactions.loc[trade.Index, "average cost"] = (
+                        trade[id] + inventory_cost_after_selling
+                    ) / trade.inventory
 
 
 def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
