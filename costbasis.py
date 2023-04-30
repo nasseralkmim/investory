@@ -12,11 +12,12 @@ pd.set_option("display.width", 1000)
 
 files = [
     "../sources/investments/test2.csv",
-    # "../sources/investments/stocks-2022.out.csv",
-    # "../sources/investments/stocks-2021.out.csv",
-    # "../sources/investments/stocks-2020.out.csv",
-    # "../sources/investments/stocks-2019.out.csv",
+    "../sources/investments/test3.csv",
     # "../sources/investments/stocks-2018.out.csv",
+    # "../sources/investments/stocks-2019.out.csv",
+    # "../sources/investments/stocks-2020.out.csv",
+    # "../sources/investments/stocks-2021.out.csv",
+    # "../sources/investments/stocks-2022.out.csv",
     # "../sources/investments/etf-2022.csv",
     # "../sources/investments/etf-2021.csv",
     # "../sources/investments/reit-2021.out.csv",
@@ -26,13 +27,20 @@ files = [
 
 
 def collect_transactions(files: list[str]) -> pd.DataFrame:
-    """Collect transactions from all 'csv' files into a single Dataframe."""
+    """Collect transactions from all 'csv' files into a single Dataframe.
+
+    We need to know the whole history of transactions for all commodities.
+
+    """
     transactions = pd.DataFrame()
     transaction_list = []
     for file in files:
-        transaction_list.append(pd.read_csv(file))
-        transactions = pd.concat(transaction_list)
+        df = pd.read_csv(file)
+        # add the file name as a column
+        df["file"] = file
+        transaction_list.append(df)
 
+    transactions = pd.concat(transaction_list)
     return transactions
 
 
@@ -50,6 +58,13 @@ class Inventory:
 
     def __init__(self, transactions: pd.DataFrame):
         self.transactions = transactions.copy()
+
+        # set the date properly and sort by date
+        self.transactions["date"] = pd.to_datetime(
+            self.transactions["date"], format="%m/%d/%Y"
+        )
+        self.transactions = self.transactions.sort_values(by="date")
+
         self._set_transactions_epochs()
         self._compute_transaction_cost()
         self._set_inventory()
@@ -61,7 +76,7 @@ class Inventory:
         The epochs are marked by a selling event.
 
         """
-        self.transactions.loc[:, "epoch"] = (
+        self.transactions["epoch"] = (
             self.transactions["type"] == "sell"
         ).cumsum()
 
@@ -148,48 +163,46 @@ class Inventory:
                     self.transactions["epoch"] == epoch, "average cost"
                 ] = (trades["transaction cost"].cumsum() / trades["vol"].cumsum())
 
-                # go to next epoch
-                continue
+            if epoch > 0:
+                # this is performed trade by trade on each epoch
+                for trade in trades.itertuples():
+                    if trade.type == "sell":
+                        # selling event gets its inventory cost based on average cost from
+                        # previous epoch
+                        previous_avg_cost = self.transactions.loc[
+                            self.transactions["epoch"] == epoch - 1, "average cost"
+                        ].iloc[-1]
 
-            # this is performed trade by trade on each epoch
-            for trade in trades.itertuples():
-                if trade.type == "sell":
-                    # selling event gets its inventory cost based on average cost from
-                    # previous epoch
-                    previous_avg_cost = self.transactions.loc[
-                        self.transactions["epoch"] == epoch - 1, "average cost"
-                    ].iloc[-1]
+                        self.transactions.loc[
+                            trade.Index, "average cost"
+                        ] = previous_avg_cost
 
-                    self.transactions.loc[
-                        trade.Index, "average cost"
-                    ] = previous_avg_cost
+                        previous_inventory_cost = self.transactions.loc[
+                            self.transactions["epoch"] == epoch - 1, "inventory cost"
+                        ].iloc[-1]
 
-                    previous_inventory_cost = self.transactions.loc[
-                        self.transactions["epoch"] == epoch - 1, "inventory cost"
-                    ].iloc[-1]
+                        self.transactions.loc[trade.Index, "inventory cost"] = (
+                            previous_avg_cost * trade.vol + previous_inventory_cost
+                        )
 
-                    self.transactions.loc[trade.Index, "inventory cost"] = (
-                        previous_avg_cost * trade.vol + previous_inventory_cost
-                    )
+                    if trade.type == "buy":
+                        # add the inventory cost after the selling transaction
+                        inventory_cost_after_selling = self.transactions.loc[
+                            (self.transactions["epoch"] == epoch)
+                            & (self.transactions["type"] == "sell"),
+                            "inventory cost",
+                        ].iloc[-1]
 
-                if trade.type == "buy":
-                    # add the inventory cost after the selling transaction
-                    inventory_cost_after_selling = self.transactions.loc[
-                        (self.transactions["epoch"] == epoch)
-                        & (self.transactions["type"] == "sell"),
-                        "inventory cost",
-                    ].iloc[-1]
+                        # consider the index
+                        # TODO: maybe better to use `iterrows()`
+                        id = self.transactions.columns.get_loc("transaction cost") + 1
+                        self.transactions.loc[trade.Index, "inventory cost"] = (
+                            trade[id] + inventory_cost_after_selling
+                        )
 
-                    # consider the index
-                    # TODO: maybe better to use `iterrows()`
-                    id = self.transactions.columns.get_loc("transaction cost") + 1
-                    self.transactions.loc[trade.Index, "inventory cost"] = (
-                        trade[id] + inventory_cost_after_selling
-                    )
-
-                    self.transactions.loc[trade.Index, "average cost"] = (
-                        trade[id] + inventory_cost_after_selling
-                    ) / trade.inventory
+                        self.transactions.loc[trade.Index, "average cost"] = (
+                            trade[id] + inventory_cost_after_selling
+                        ) / trade.inventory
 
 
 def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
@@ -199,9 +212,29 @@ def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
     return aggregate_inventory
 
 
+def save_output(inventory_list: list[Inventory]) -> None:
+    """Save processed output as a 'csv' file for each year."""
+    # combine the inventory of all commodities into a single dataframe
+    consolidated_inventory = pd.DataFrame()
+    transactions_list = []
+    for inventory in inventory_list:
+        transactions_list.append(inventory.transactions)
+    consolidated_inventory = pd.concat(transactions_list)
+
+    # group the dataframe by year and save csv
+    # TODO: Make it more robust, right now it the date format is hard coded
+    consolidated_inventory = consolidated_inventory
+    grouped_by_year = consolidated_inventory.groupby(pd.Grouper(key="date", freq="Y"))
+    for group in grouped_by_year.groups:
+        group_df = grouped_by_year.get_group(group)
+        filename = group_df["file"].iloc[0]
+        # remove the file column
+        group_df = group_df.drop("file", axis=1)
+        group_df.to_csv(f"{filename[:-4]}.out.csv", index=False)
+
+
 if __name__ == "__main__":
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
-    aggregated_inventory = generate_aggregate_inventory(transactions)
-
-    print(aggregated_inventory[0].transactions)
+    inventory_list = generate_aggregate_inventory(transactions)
+    save_output(inventory_list)
