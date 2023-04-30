@@ -11,8 +11,10 @@ pd.set_option("display.max_columns", 500)
 pd.set_option("display.width", 1000)
 
 files = [
-    "../sources/investments/test2.csv",
-    "../sources/investments/test3.csv",
+    "../sources/investments/test.csv",
+    "../sources/investments/test4.csv",
+    # "../sources/investments/test2.csv",
+    # "../sources/investments/test3.csv",
     # "../sources/investments/stocks-2018.out.csv",
     # "../sources/investments/stocks-2019.out.csv",
     # "../sources/investments/stocks-2020.out.csv",
@@ -193,7 +195,7 @@ class Inventory:
                             "inventory cost",
                         ].iloc[-1]
 
-                        # consider the index
+                        # +1 to consider the index
                         # TODO: maybe better to use `iterrows()`
                         id = self.transactions.columns.get_loc("transaction cost") + 1
                         self.transactions.loc[trade.Index, "inventory cost"] = (
