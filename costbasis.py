@@ -136,7 +136,7 @@ class Inventory:
         epoch_groups = self.transactions.groupby("epoch")
         epoch_trades = [epoch_groups.get_group(x) for x in epoch_groups.groups]
 
-        # process each epoch separetely
+        # process each epoch separately
         for epoch, trades in enumerate(epoch_trades):
             # first epoch has no selling
             if epoch == 0:
