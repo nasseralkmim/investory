@@ -78,11 +78,8 @@ class Inventory:
     def _compute_inventory_cost(self) -> pd.DataFrame:
         """Compute the total inventory cost for each transaction.
 
-        The inventory cost is the current total cost of all lots in the inventory.
-
-        Each commodity, or asset, is treated as an inventory. The cost of each
-        inventory item is computed based on a weighted average of the /purchases/ on
-        the period.  See [1]_ for some explanation.
+        The inventory cost is the current total cost of all lots in the
+        inventory. See [1]_ for some explanation.
 
         Some terms:
 
@@ -152,6 +149,7 @@ class Inventory:
                 ] = (trades["transaction cost"].cumsum() / trades["vol"].cumsum())
 
                 # go to next epoch
+                continue
 
             # this is performed trade by trade on each epoch
             for trade in trades.itertuples():
