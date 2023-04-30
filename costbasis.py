@@ -5,14 +5,13 @@ The cost basis used is the *average cost*.
 
 """
 import pandas as pd
-import numpy as np
 
 pd.set_option("display.max_rows", 500)
 pd.set_option("display.max_columns", 500)
 pd.set_option("display.width", 1000)
 
 files = [
-    "../sources/investments/test.csv",
+    "../sources/investments/test2.csv",
     # "../sources/investments/stocks-2022.out.csv",
     # "../sources/investments/stocks-2021.out.csv",
     # "../sources/investments/stocks-2020.out.csv",
@@ -72,7 +71,8 @@ class Inventory:
             self.transactions["vol"] * self.transactions["price"]
         )
 
-    def _set_inventory(self):
+    def _set_inventory(self) -> None:
+        """Set the current inventory for each transaction."""
         self.transactions["inventory"] = self.transactions["vol"].cumsum()
 
     def _compute_inventory_cost(self) -> pd.DataFrame:
@@ -205,4 +205,3 @@ if __name__ == "__main__":
     aggregated_inventory = generate_aggregate_inventory(transactions)
 
     print(aggregated_inventory[0].transactions)
-    print(aggregated_inventory[1].transactions)
