@@ -10,23 +10,6 @@ pd.set_option("display.max_rows", 500)
 pd.set_option("display.max_columns", 500)
 pd.set_option("display.width", 1000)
 
-files = [
-    "../sources/investments/test.csv",
-    "../sources/investments/test4.csv",
-    # "../sources/investments/test2.csv",
-    # "../sources/investments/test3.csv",
-    # "../sources/investments/stocks-2018.out.csv",
-    # "../sources/investments/stocks-2019.out.csv",
-    # "../sources/investments/stocks-2020.out.csv",
-    # "../sources/investments/stocks-2021.out.csv",
-    # "../sources/investments/stocks-2022.out.csv",
-    # "../sources/investments/etf-2022.csv",
-    # "../sources/investments/etf-2021.csv",
-    # "../sources/investments/reit-2021.out.csv",
-    # "../sources/investments/reit-2020.out.csv",
-    # "../sources/investments/reit-2019.out.csv",
-]
-
 
 def collect_transactions(files: list[str]) -> pd.DataFrame:
     """Collect transactions from all 'csv' files into a single Dataframe.
@@ -42,7 +25,8 @@ def collect_transactions(files: list[str]) -> pd.DataFrame:
         df["file"] = file
         transaction_list.append(df)
 
-    transactions = pd.concat(transaction_list)
+    # ignore index so the new dataframe has unique index for each row
+    transactions = pd.concat(transaction_list, ignore_index=True)
     return transactions
 
 
@@ -78,9 +62,7 @@ class Inventory:
         The epochs are marked by a selling event.
 
         """
-        self.transactions["epoch"] = (
-            self.transactions["type"] == "sell"
-        ).cumsum()
+        self.transactions["epoch"] = (self.transactions["type"] == "sell").cumsum()
 
     def _compute_transaction_cost(self) -> pd.DataFrame:
         """Compute the total cost for each transaction."""
@@ -236,7 +218,19 @@ def save_output(inventory_list: list[Inventory]) -> None:
 
 
 if __name__ == "__main__":
+
+    import argparse
+    parser = argparse.ArgumentParser(description="Process multiple file paths")
+    parser.add_argument("file_paths", metavar="FILE_PATHS", nargs="+", help="File paths to process")
+    args = parser.parse_args()
+
+    files = []
+
+    for file_path in args.file_paths:
+        files.append(file_path)
+
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory_list = generate_aggregate_inventory(transactions)
+    print(inventory_list[0].transactions)
     save_output(inventory_list)
