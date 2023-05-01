@@ -133,23 +133,23 @@ class Inventory:
         """
         # divide the data frame for each epoch
         epoch_groups = self.transactions.groupby("epoch")
-        epoch_trades = [epoch_groups.get_group(x) for x in epoch_groups.groups]
+        epoch_trades_list = [epoch_groups.get_group(x) for x in epoch_groups.groups]
 
         # process each epoch separately
-        for epoch, trades in enumerate(epoch_trades):
+        for epoch, epoch_trades in enumerate(epoch_trades_list):
             # first epoch has no selling
             if epoch == 0:
                 self.transactions.loc[
                     self.transactions["epoch"] == epoch, "inventory cost"
-                ] = trades["transaction cost"].cumsum()
+                ] = epoch_trades["transaction cost"].cumsum()
 
                 self.transactions.loc[
                     self.transactions["epoch"] == epoch, "average cost"
-                ] = (trades["transaction cost"].cumsum() / trades["vol"].cumsum())
+                ] = (epoch_trades["transaction cost"].cumsum() / epoch_trades["vol"].cumsum())
 
             if epoch > 0:
                 # this is performed trade by trade on each epoch
-                for trade in trades.itertuples():
+                for trade in epoch_trades.itertuples():
                     if trade.type == "sell":
                         # selling event gets its inventory cost based on average cost from
                         # previous epoch
@@ -226,11 +226,12 @@ if __name__ == "__main__":
 
     files = []
 
+    print("Processing trades from the files: \n")
     for file_path in args.file_paths:
+        print(file_path, "\n")
         files.append(file_path)
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory_list = generate_aggregate_inventory(transactions)
-    print(inventory_list[0].transactions)
     save_output(inventory_list)
