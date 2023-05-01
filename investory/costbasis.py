@@ -73,7 +73,10 @@ class Inventory:
     def _set_inventory(self) -> None:
         """Set the current inventory for each transaction."""
         self.transactions["inventory"] = self.transactions["vol"].cumsum()
+
         # also set inventory before split for using hledger csv rules
+        # initialize the column because missing balues are float
+        self.transactions.insert(len(self.transactions.columns), "inventory before split", 0)
         self.transactions.loc[
             self.transactions["type"] == "split", "inventory before split"
         ] = (
