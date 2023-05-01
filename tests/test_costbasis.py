@@ -27,7 +27,19 @@ def csv_file_2(tmp_path):
     return file_path
 
 
-def test_inventory_cost(csv_file_1, csv_file_2 ):
+@pytest.fixture
+def csv_file_3(tmp_path):
+    csv_data = '''date,type,ticker,vol,price,name,CNPJ
+01/03/2023,split,AAAA,200,0.,X,Y
+01/05/2023,buy,AAAA,50,4.,X,Y'''
+
+    file_path = os.path.join(tmp_path, 'input_file3.csv')
+    with open(file_path, 'w') as f:
+        f.write(csv_data)
+    return file_path
+
+
+def test_inventory_cost(csv_file_1, csv_file_2):
     files = [
         csv_file_1,
         csv_file_2,
@@ -51,7 +63,7 @@ def test_inventory_cost(csv_file_1, csv_file_2 ):
     )
 
 
-def test_inventory_quantities(csv_file_1, csv_file_2 ):
+def test_inventory_quantities(csv_file_1, csv_file_2):
     files = [
         csv_file_1,
         csv_file_2,
@@ -67,7 +79,7 @@ def test_inventory_quantities(csv_file_1, csv_file_2 ):
     assert df.loc[df["date"] == "2022-01-05", "inventory"].values[0] == 200
 
 
-def test_transaction_cost(csv_file_1, csv_file_2 ):
+def test_transaction_cost(csv_file_1, csv_file_2):
     files = [
         csv_file_1,
         csv_file_2,
@@ -81,3 +93,25 @@ def test_transaction_cost(csv_file_1, csv_file_2 ):
     assert df.loc[df["date"] == "2021-01-02", "transaction cost"].values[0] == 1200
     assert df.loc[df["date"] == "2022-01-03", "transaction cost"].values[0] == -650
     assert df.loc[df["date"] == "2022-01-05", "transaction cost"].values[0] == 450
+
+
+def test_split_transaction(csv_file_1, csv_file_2, csv_file_3):
+    files = [
+        csv_file_1,
+        csv_file_2,
+        csv_file_3,
+    ]
+
+    transactions = costbasis.collect_transactions(files)
+    transactions = costbasis.adjust_volume(transactions)
+    inventory_list = costbasis.generate_aggregate_inventory(transactions)
+    df = inventory_list[0].transactions
+    print(df)
+    assert df.loc[df["date"] == "2023-01-03", "inventory cost"].values[0] == 2100
+    assert df.loc[df["date"] == "2023-01-03", "average cost"].values[0] == 2100 / 400
+    assert df.loc[df["date"] == "2023-01-05", "inventory cost"].values[0] == 2300
+    assert df.loc[df["date"] == "2023-01-05", "average cost"].values[0] == 2300 / 450
+
+
+if __name__ == "__main__":
+    test_split_transaction("test1.csv", "test2.csv", "test3.csv")
