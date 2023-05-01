@@ -73,6 +73,13 @@ class Inventory:
     def _set_inventory(self) -> None:
         """Set the current inventory for each transaction."""
         self.transactions["inventory"] = self.transactions["vol"].cumsum()
+        # also set inventory before split for using hledger csv rules
+        self.transactions.loc[
+            self.transactions["type"] == "split", "inventory before split"
+        ] = (
+            self.transactions.loc[self.transactions["type"] == "split", "inventory"]
+            - self.transactions.loc[self.transactions["type"] == "split", "vol"]
+        )
 
     def _compute_inventory_cost(self) -> pd.DataFrame:
         """Compute the total inventory cost for each transaction.
