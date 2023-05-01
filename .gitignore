@@ -1,3 +1,5 @@
 /__pycache__/
 /doc/build/
 /investory.egg-info/
+/tests/*.csv
+*.pyc
