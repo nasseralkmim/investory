@@ -30,6 +30,7 @@ class Commodity:
 
         self.yahoo_name: str = self.ticker
 
+        # adjust the ticker to yahoo
         if self.ticker in ["VWCE", "SXR8"]:
             self.yahoo_name = f"{self.ticker}.DE"
             self.currency: str = "€"
@@ -38,6 +39,12 @@ class Commodity:
             # ".SA" suffix
             self.yahoo_name = f"{self.ticker}.SA"
             self.currency = "R$"
+        elif self.ticker == "R$":
+            self.yahoo_name = "BRL"
+            self.currency = "$"
+        elif self.ticker == "€":
+            self.yahoo_name = "EUR"
+            self.currency = "$"
         else:
             self.currency: str = "$"
 
