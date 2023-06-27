@@ -22,14 +22,24 @@ from dataclasses import dataclass, field
 @dataclass
 class Commodity:
     ticker: str = ""
-    yahoo_name: str = ticker
     date: list[str] = field(default_factory=list)
     price: list[float] = field(default_factory=list)
 
-    if ticker in ["VWCE", "SXR8"]:
-        currency: str = "€"
-    else:
-        currency: str = "$"
+    def __post_init__(self):
+        self.file: str = f"{self.ticker}.ledger"
+
+        self.yahoo_name: str = self.ticker
+
+        if self.ticker in ["VWCE", "SXR8"]:
+            self.yahoo_name = f"{self.ticker}.DE"
+            self.currency: str = "€"
+        elif self.ticker[-1] in ["3", "4", "11", "5", "31"]:
+            # if ticker end with number, it is a Brazilian stock, which has a
+            # ".SA" suffix
+            self.yahoo_name = f"{self.ticker}.SA"
+            self.currency = "R$"
+        else:
+            self.currency: str = "$"
 
 
 def get_commodity_price(
@@ -37,14 +47,8 @@ def get_commodity_price(
 ) -> tuple[str, float]:
     """Getting the commodity price on specific date."""
 
-    # if ticker end with number, it is a Brazilian stock, which has a
-    # ".SA" suffix
-    if commodity.ticker[-1] in ["3", "4", "11", "5", "31"]:
-        commodity.yahoo_name = f"{commodity.ticker}.SA"
-        commodity.currency = "R$"
-
     # get history price for the next 10 days
-    data = yq.Ticker(commodity.ticker).history(
+    data = yq.Ticker(commodity.yahoo_name).history(
         start=date, end=date + datetime.timedelta(days=10)
     )
 
@@ -53,7 +57,6 @@ def get_commodity_price(
         # get string for datetime object
         date_string = data.index[0][1].strftime("%Y-%m-%d")
         value = data.close[0]
-        print("Found value ", value, "at ", date_string)
     except IndexError:
         # if after 10 days there still no data, it is probably not available
         value = np.NaN
@@ -62,14 +65,18 @@ def get_commodity_price(
     return date_string, value
 
 
-def get_last_date_recorded(commodity: str) -> datetime.date:
+def get_last_date_recorded(commodity: Commodity) -> datetime.date:
     """Get the last date recorded in the file."""
-    return datetime.date(2023, 1, 1)
+    with open(commodity.file, "r") as f:
+        last_line: str = f.read().splitlines()[-1]
+        last_date_str: str = last_line.split()[1]
+        last_date: datetime.date = datetime.datetime.strptime(last_date_str, "%Y-%m-%d")
+    return last_date
 
 
-def get_initial_date(commodity: str) -> datetime.date:
+def get_initial_date(commodity: Commodity) -> datetime.date:
     """Get the date from which to obtain the commodity values."""
-    if os.path.exists(f"{commodity}.ledger"):
+    if os.path.exists(f"{commodity.file}"):
         last_date_recorded = get_last_date_recorded(commodity)
         return last_date_recorded
     else:
@@ -88,12 +95,14 @@ if __name__ == "__main__":
 
     commodity = Commodity(ticker=args.commodity[0])
 
-    initial_date = get_initial_date(commodity.ticker)
+    initial_date = get_initial_date(commodity)
 
     # loop over month end (business day 'BM') from 2017 until today
     for month_end in pd.date_range(
-        initial_date, datetime.date(2017, 3, 1), freq="BM"
+        initial_date, datetime.date.today(), freq="BM"
     ):
         date, value = get_commodity_price(commodity, month_end)
-        with open(f"{commodity.ticker}.ledger", "w") as f:
-            f.write(f"P {date} {commodity.ticker} {commodity.currency} {value}")
+        # only save if there is a value
+        if not np.isnan(value):
+            with open(f"{commodity.file}", "a") as f:
+                f.write(f"P {date} {commodity.ticker} {commodity.currency}{value}\n")
