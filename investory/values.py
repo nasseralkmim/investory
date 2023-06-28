@@ -40,11 +40,13 @@ class Commodity:
             self.yahoo_name = f"{self.ticker}.SA"
             self.currency = "R$"
         elif self.ticker == "R$":
-            self.yahoo_name = "BRL"
+            self.yahoo_name = "BRLUSD"
             self.currency = "$"
+            self.file = "BRLUSD.ledger"
         elif self.ticker == "€":
-            self.yahoo_name = "EUR"
+            self.yahoo_name = "EURUSD" # price of euros in dollars
             self.currency = "$"
+            self.file = "EURUSD.ledger"
         else:
             self.currency: str = "$"
 
@@ -85,7 +87,8 @@ def get_initial_date(commodity: Commodity) -> datetime.date:
     """Get the date from which to obtain the commodity values."""
     if os.path.exists(f"{commodity.file}"):
         last_date_recorded = get_last_date_recorded(commodity)
-        return last_date_recorded
+        # add a month to this date, which will be the starting point
+        return last_date_recorded + datetime.timedelta(weeks=4)
     else:
         # if file does not exist start from this date
         return datetime.date(2017, 1, 1)
