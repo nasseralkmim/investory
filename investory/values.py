@@ -34,7 +34,7 @@ class Commodity:
         if self.ticker in ["VWCE", "SXR8"]:
             self.yahoo_name = f"{self.ticker}.DE"
             self.currency: str = "€"
-        elif self.ticker[-1] in ["3", "4", "11", "5", "31"]:
+        elif self.ticker[-1] in ["3", "4", "1", "5"]:
             # if ticker end with number, it is a Brazilian stock, which has a
             # ".SA" suffix
             self.yahoo_name = f"{self.ticker}.SA"
