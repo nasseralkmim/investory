@@ -39,12 +39,14 @@ class Commodity:
             # ".SA" suffix
             self.yahoo_name = f"{self.ticker}.SA"
             self.currency = "R$"
-        elif self.ticker == "R$":
-            self.yahoo_name = "BRLUSD"
+        elif self.ticker in ["R$", "BRL", "BRLUSD"]:
+            self.yahoo_name = "BRLUSD=X"
             self.currency = "$"
+            self.ticker = "R$"
             self.file = "BRLUSD.ledger"
-        elif self.ticker == "€":
-            self.yahoo_name = "EURUSD" # price of euros in dollars
+        elif self.ticker in ["€", "EUR", "EURUSD"]:
+            self.yahoo_name = "EURUSD=X"
+            self.ticker = "€"
             self.currency = "$"
             self.file = "EURUSD.ledger"
         else:
