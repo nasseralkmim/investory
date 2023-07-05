@@ -117,4 +117,4 @@ if __name__ == "__main__":
         # only save if there is a value
         if not np.isnan(value):
             with open(f"{commodity.file}", "a") as f:
-                f.write(f"P {date} {commodity.ticker} {commodity.currency}{value}\n")
+                f.write(f'P {date} "{commodity.ticker}" {commodity.currency}{value:.2f}\n')
