@@ -21,9 +21,8 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Commodity:
+    """Encapsulate information for a commodity"""
     ticker: str = ""
-    date: list[str] = field(default_factory=list)
-    price: list[float] = field(default_factory=list)
 
     def __post_init__(self):
         self.file: str = f"{self.ticker}.ledger"
@@ -96,12 +95,35 @@ def get_initial_date(commodity: Commodity) -> datetime.date:
         return datetime.date(2017, 1, 1)
 
 
+def get_split_ratio_and_date(input: str) -> tuple[float, datetime.date]:
+    """Convert string input into a tuple with ratio and date for split."""
+    ratio_, date_ = input.split(",")
+
+    # convert to appropriate types
+    ratio = float(ratio_)
+    date = datetime.datetime.strptime(date_, "%Y-%m-%d").date()
+    return (ratio, date)
+
+
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Get value of commodity")
     parser.add_argument(
-        "commodity", metavar="STRING", nargs="+", help="Ticker form Yahoo database"
+        "-c",
+        "--commodity",
+        metavar="STRING",
+        nargs=1,
+        help="Ticker form Yahoo database.",
+        required=True,
+    )
+    parser.add_argument(
+        "-s",
+        "--split",
+        help="Adjust historical prices with split ratio (N) 1:N from specified date (YYYY-MM-DD).",
+        nargs=1,
+        required=False,
+        type=str,
     )
     args = parser.parse_args()
 
