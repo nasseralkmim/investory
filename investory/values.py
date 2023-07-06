@@ -4,9 +4,9 @@ Usage:
 
     $ python -m investory.values <commodity ticker>
 
-The commodities list can be obtained from a ledger file:
+The commodities list can be obtained with:
 
-    $ hledger -f all.ledger commodities > commodities.csv
+    $ hledger -f all.ledger commodities
 
 Some commodities tickers need a specific suffix according to Yahoo database.
 For example, Brazilian stocks need a '.SA'.
