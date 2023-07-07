@@ -5,20 +5,21 @@
 
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity IRBR3 --split 30,2023-01-25
+$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
 head IRBR3.ledger
 #+end_src
 
 #+RESULTS:
 #+begin_example
-P 2017-07-31 "IRBR3" R$224.58
-P 2017-08-31 "IRBR3" R$230.03
-P 2017-09-29 "IRBR3" R$231.94
-P 2017-10-31 "IRBR3" R$251.57
-P 2017-11-30 "IRBR3" R$263.38
-P 2017-12-29 "IRBR3" R$260.70
-P 2018-01-31 "IRBR3" R$287.92
-P 2018-02-28 "IRBR3" R$296.74
-P 2018-04-02 "IRBR3" R$318.97
-P 2018-04-30 "IRBR3" R$362.68
+P 2017-07-31 "IRBR3" R$21.65
+P 2017-08-31 "IRBR3" R$22.18
+P 2017-09-29 "IRBR3" R$22.36
+P 2017-10-31 "IRBR3" R$24.26
+P 2017-11-30 "IRBR3" R$25.84
+P 2017-12-29 "IRBR3" R$25.57
+P 2018-01-31 "IRBR3" R$28.24
+P 2018-02-28 "IRBR3" R$29.11
+P 2018-04-02 "IRBR3" R$31.29
+P 2018-04-30 "IRBR3" R$35.58
 #+end_example
+

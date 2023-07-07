@@ -16,7 +16,7 @@ import pandas as pd
 import os
 import yahooquery as yq
 import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -50,6 +50,17 @@ class Commodity:
             self.file = "EURUSD.ledger"
         else:
             self.currency: str = "$"
+
+
+def adjust_for_split(
+    date: str, value: float, split_ratio: float, split_date: datetime.date
+) -> float:
+    """Adjust value because of split."""
+    # check if date is before split_date
+    if datetime.datetime.strptime(date, "%Y-%m-%d").date() <= split_date:
+        value = value * split_ratio
+
+    return value
 
 
 def get_commodity_price(
@@ -96,12 +107,19 @@ def get_initial_date(commodity: Commodity) -> datetime.date:
 
 
 def get_split_ratio_and_date(input: str) -> tuple[float, datetime.date]:
-    """Convert string input into a tuple with ratio and date for split."""
+    """Get split ratio and date from string input."""
     ratio_, date_ = input.split(",")
 
     # convert to appropriate types
-    ratio = float(ratio_)
-    date = datetime.datetime.strptime(date_, "%Y-%m-%d").date()
+    #
+    # Example:
+    #
+    # 30:1 (ratio_from:ratio_to) if we have 60 stocks we get 60 * 1 / 30 = 2
+    ratio_from: int = int(ratio_.split(":")[0])
+    ratio_to: int = int(ratio_.split(":")[1])
+    ratio: float = float(ratio_to / ratio_from)
+
+    date: datetime.date = datetime.datetime.strptime(date_, "%Y-%m-%d").date()
     return (ratio, date)
 
 
@@ -120,14 +138,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "-s",
         "--split",
-        help="Adjust historical prices with split ratio (N) 1:N from specified date (YYYY-MM-DD).",
-        nargs=1,
+        help="Adjust historical prices with split ratio from specified date (x:y,YYYY-MM-DD).",
+        nargs="+",
         required=False,
         type=str,
+        default=[],
     )
     args = parser.parse_args()
 
-    commodity = Commodity(ticker=args.commodity[0])
+    commodity = Commodity(args.commodity[0])
 
     initial_date = get_initial_date(commodity)
 
@@ -136,7 +155,18 @@ if __name__ == "__main__":
         initial_date, datetime.date.today(), freq="BM"
     ):
         date, value = get_commodity_price(commodity, month_end)
+
         # only save if there is a value
         if not np.isnan(value):
+
+            # Adjust for split
+            for splits_ratio_and_date in args.split:
+                split_ratio, split_date = get_split_ratio_and_date(
+                    splits_ratio_and_date
+                )
+                value = adjust_for_split(date, value, split_ratio, split_date)
+
             with open(f"{commodity.file}", "a") as f:
-                f.write(f'P {date} "{commodity.ticker}" {commodity.currency}{value:.2f}\n')
+                f.write(
+                    f'P {date} "{commodity.ticker}" {commodity.currency}{value:.2f}\n'
+                )
