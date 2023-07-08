@@ -103,7 +103,7 @@ def get_initial_date(commodity: Commodity) -> datetime.date:
         return last_date_recorded + datetime.timedelta(weeks=4)
     else:
         # if file does not exist start from this date
-        return datetime.date(2017, 1, 1)
+        return datetime.date(2018, 1, 1)
 
 
 def get_split_ratio_and_date(input: str) -> tuple[float, datetime.date]:
