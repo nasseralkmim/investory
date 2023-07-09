@@ -95,7 +95,9 @@ def get_last_date_recorded(commodity: Commodity) -> datetime.date:
     return last_date
 
 
-def get_initial_date(commodity: Commodity) -> datetime.date:
+def get_initial_date(
+    commodity: Commodity, default_initial_date: datetime.date
+) -> datetime.date:
     """Get the date from which to obtain the commodity values."""
     if os.path.exists(f"{commodity.file}"):
         last_date_recorded = get_last_date_recorded(commodity)
@@ -103,7 +105,7 @@ def get_initial_date(commodity: Commodity) -> datetime.date:
         return last_date_recorded + datetime.timedelta(weeks=4)
     else:
         # if file does not exist start from this date
-        return datetime.date(2018, 1, 1)
+        return default_initial_date
 
 
 def get_split_ratio_and_date(input: str) -> tuple[float, datetime.date]:
@@ -128,27 +130,39 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Get value of commodity")
     parser.add_argument(
-        "-c",
         "--commodity",
         metavar="STRING",
         nargs=1,
         help="Ticker form Yahoo database.",
         required=True,
     )
+    split_help = (
+        "Adjust historical prices with split ratio from specified"
+        "date (x:y,YYYY-MM-DD)."
+    )
     parser.add_argument(
-        "-s",
         "--split",
-        help="Adjust historical prices with split ratio from specified date (x:y,YYYY-MM-DD).",
+        help=split_help,
         nargs="+",
         required=False,
         type=str,
         default=[],
     )
+    initial_date_help = ("Date from which to collect data (YYYY-MM-DD).")
+    parser.add_argument(
+        "--begin",
+        help=initial_date_help,
+        required=False,
+        type=lambda s: datetime.datetime.strptime(s, "%Y-%m-%d").date(),
+        default=datetime.date(2018, 1, 1),
+    )
     args = parser.parse_args()
 
     commodity = Commodity(args.commodity[0])
 
-    initial_date = get_initial_date(commodity)
+    initial_date = get_initial_date(
+        commodity, default_initial_date=args.begin
+    )
 
     # loop over month end (business day 'BM') from 2017 until today
     for month_end in pd.date_range(

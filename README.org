@@ -23,3 +23,22 @@ P 2018-04-02 "IRBR3" R$31.29
 P 2018-04-30 "IRBR3" R$35.58
 #+end_example
 
+#+begin_src sh :dir examples/values/
+python=~/.venv/general/bin/python
+$python -m investory.values --commodity EURUSD --begin 2017-01-01
+head EURUSD.ledger
+#+end_src
+
+#+RESULTS:
+#+begin_example
+P 2017-01-31 "€" $1.07
+P 2017-02-28 "€" $1.06
+P 2017-03-31 "€" $1.07
+P 2017-04-28 "€" $1.09
+P 2017-05-31 "€" $1.12
+P 2017-06-30 "€" $1.14
+P 2017-07-31 "€" $1.17
+P 2017-08-31 "€" $1.19
+P 2017-09-29 "€" $1.18
+P 2017-10-31 "€" $1.17
+#+end_example
