@@ -48,6 +48,11 @@ class Commodity:
             self.ticker = "€"
             self.currency = "$"
             self.file = "EURUSD.ledger"
+        elif self.ticker in ["BRLEUR"]:
+            self.yahoo_name = "BRLEUR=X"
+            self.ticker = "R$"
+            self.currency = "€"
+            self.file = "BRLEUR.ledger"
         else:
             self.currency: str = "$"
 
