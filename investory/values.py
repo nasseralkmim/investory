@@ -16,15 +16,12 @@ import pandas as pd
 import os
 import yahooquery as yq
 import datetime
-from dataclasses import dataclass
 
 
-@dataclass
 class Commodity:
     """Encapsulate information for a commodity"""
-    ticker: str = ""
-
-    def __post_init__(self):
+    def __init__(self, ticker: str, currency: str = "$"):
+        self.ticker = ticker
         self.file: str = f"{self.ticker}.ledger"
 
         self.yahoo_name: str = self.ticker
@@ -54,7 +51,7 @@ class Commodity:
             self.currency = "€"
             self.file = "BRLEUR.ledger"
         else:
-            self.currency: str = "$"
+            self.currency: str = currency
 
 
 def adjust_for_split(
@@ -161,9 +158,18 @@ if __name__ == "__main__":
         type=lambda s: datetime.datetime.strptime(s, "%Y-%m-%d").date(),
         default=datetime.date(2018, 1, 1),
     )
+    parser.add_argument(
+        "--currency",
+        help="Commodity currency ($)",
+        required=False,
+        type=str,
+        default="$",
+    )
     args = parser.parse_args()
 
-    commodity = Commodity(args.commodity[0])
+    print(args.currency)
+
+    commodity = Commodity(args.commodity[0], args.currency)
 
     initial_date = get_initial_date(
         commodity, default_initial_date=args.begin
