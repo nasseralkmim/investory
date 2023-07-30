@@ -71,8 +71,9 @@ def get_commodity_price(
     """Getting the commodity price on specific date."""
 
     # get history price for the next 10 days
+    # adj_ohlc: adjusts for split and dividends (default is just splits)
     data = yq.Ticker(commodity.yahoo_name).history(
-        start=date, end=date + datetime.timedelta(days=10)
+        start=date, end=date + datetime.timedelta(days=10), adj_ohlc=True
     )
 
     # extract just the first valid date and close value
