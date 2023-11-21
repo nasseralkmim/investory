@@ -168,7 +168,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print(args.currency)
+    # print(args.currency)
 
     commodity = Commodity(args.commodity[0], args.currency)
 
@@ -176,7 +176,7 @@ if __name__ == "__main__":
         commodity, default_initial_date=args.begin
     )
 
-    # loop over month end (business day 'BM') from 2017 until today
+    # loop over month end (business day 'BM') from 'begin' date until today
     for month_end in pd.date_range(
         initial_date, datetime.date.today(), freq="BM"
     ):
@@ -194,5 +194,5 @@ if __name__ == "__main__":
 
             with open(f"{commodity.file}", "a") as f:
                 f.write(
-                    f'P {date} "{commodity.ticker}" {commodity.currency}{value:.2f}\n'
+                    f'P {date} "{commodity.ticker}" {commodity.currency}{value:f}\n'
                 )

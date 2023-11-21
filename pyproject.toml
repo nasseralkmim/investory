@@ -1,4 +1,5 @@
 [project]
+version = "0.0.1"
 name = "investory"
 dependencies = ["pandas", "yahooquery"]
 
@@ -8,7 +9,6 @@ max-line-length = 88            # same as black
 # language server also use pycodestyle
 [tool.pycodestyle]
 max-line-length = 120
-
 
 [tool.pyright]
 venvPath = "/home/nasser/.venv/"

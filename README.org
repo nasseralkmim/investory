@@ -1,5 +1,22 @@
 * Introduction
 * Features
+* Installing
+
+Create a virtual environment, if it already does not exist[fn:1].
+
+#+begin_src sh
+python -m venv ~/.venv/general
+#+end_src
+
+Then using pip from the virtual environment on the source code root directory.
+The flag =-e= is for "editable" so one can edit the source code.
+
+#+begin_src sh
+~/.venv/general/bin/pip install -e . 
+#+end_src
+
+[fn:1] https://packaging.python.org/en/latest/tutorials/installing-packages/#creating-virtual-environments 
+
 * How to use it
 ** Values module
 
