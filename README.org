@@ -40,27 +40,6 @@ P 2018-04-02 "IRBR3" R$31.29
 P 2018-04-30 "IRBR3" R$35.58
 #+end_example
 
-#+begin_src sh :dir examples/values/
-python=~/.venv/general/bin/python
-$python -m investory.values --commodity € --yahooticker EURUSD=X --begin 2023-01-01
-head EURUSD=X.ledger
-rm -rf EURUSD=X.ledger
-#+end_src
-
-#+RESULTS:
-#+begin_example
-P 2023-01-31 "€" $1.085069
-P 2023-02-28 "€" $1.061121
-P 2023-03-31 "€" $1.090465
-P 2023-04-28 "€" $1.103205
-P 2023-05-31 "€" $1.073307
-P 2023-06-30 "€" $1.086803
-P 2023-07-31 "€" $1.102426
-P 2023-08-31 "€" $1.093255
-P 2023-09-29 "€" $1.056245
-P 2023-10-31 "€" $1.061504
-#+end_example
-
 Specify currency:
 
 #+begin_src sh :dir examples/values/
@@ -85,7 +64,29 @@ P 2023-10-31 "^BVSP" R$113144.000000
 #+end_example
 
 With different yahoo ticker than the commodity symbol.
-For example we can use BTC in our ledger but at Yahoo they use "BTC-USD".
+For example we can use € in the ledger but yahoo identifies it as "EURUSD=X".
+Or we can use BTC in our ledger but at Yahoo they use "BTC-USD".
+
+#+begin_src sh :dir examples/values/
+python=~/.venv/general/bin/python
+$python -m investory.values --commodity € --yahooticker EURUSD=X --begin 2023-01-01
+head EURUSD=X.ledger
+rm -rf EURUSD=X.ledger
+#+end_src
+
+#+RESULTS:
+#+begin_example
+P 2023-01-31 "€" $1.085069
+P 2023-02-28 "€" $1.061121
+P 2023-03-31 "€" $1.090465
+P 2023-04-28 "€" $1.103205
+P 2023-05-31 "€" $1.073307
+P 2023-06-30 "€" $1.086803
+P 2023-07-31 "€" $1.102426
+P 2023-08-31 "€" $1.093255
+P 2023-09-29 "€" $1.056245
+P 2023-10-31 "€" $1.061504
+#+end_example
 
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
@@ -96,15 +97,14 @@ rm -rf BTC-USD.ledger
 
 #+RESULTS:
 #+begin_example
-BTC-USD
-P 2023-01-31 "BTC-USD" $23139.283203
-P 2023-02-28 "BTC-USD" $23147.353516
-P 2023-03-31 "BTC-USD" $28478.484375
-P 2023-04-28 "BTC-USD" $29340.261719
-P 2023-05-31 "BTC-USD" $27219.658203
-P 2023-06-30 "BTC-USD" $30477.251953
-P 2023-07-31 "BTC-USD" $29230.111328
-P 2023-08-31 "BTC-USD" $25931.472656
-P 2023-09-29 "BTC-USD" $26911.720703
-P 2023-10-31 "BTC-USD" $34667.781250
+P 2023-01-31 "BTC" $23139.283203
+P 2023-02-28 "BTC" $23147.353516
+P 2023-03-31 "BTC" $28478.484375
+P 2023-04-28 "BTC" $29340.261719
+P 2023-05-31 "BTC" $27219.658203
+P 2023-06-30 "BTC" $30477.251953
+P 2023-07-31 "BTC" $29230.111328
+P 2023-08-31 "BTC" $25931.472656
+P 2023-09-29 "BTC" $26911.720703
+P 2023-10-31 "BTC" $34667.781250
 #+end_example
