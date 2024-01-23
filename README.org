@@ -75,3 +75,29 @@ rm ^BVSP.ledger
 : P 2023-04-28 "^BVSP" R$104432.00
 : P 2023-05-31 "^BVSP" R$108335.00
 : P 2023-06-30 "^BVSP" R$118087.00
+
+With different yahoo ticker than the commodity symbol.
+For example we can use BTC in our ledger but at Yahoo they use "BTC-USD".
+
+#+begin_src sh :dir examples/values/
+python=~/.venv/general/bin/python
+$python -m investory.values --commodity BTC --yahooticker BTC-USD --begin 2023-01-01
+head BTC-USD.ledger
+rm -rf BTC-USD.ledger
+#+end_src
+
+#+RESULTS:
+#+begin_example
+BTC
+BTC-USD
+P 2023-01-31 "BTC-USD" $23139.283203
+P 2023-02-28 "BTC-USD" $23147.353516
+P 2023-03-31 "BTC-USD" $28478.484375
+P 2023-04-28 "BTC-USD" $29340.261719
+P 2023-05-31 "BTC-USD" $27219.658203
+P 2023-06-30 "BTC-USD" $30477.251953
+P 2023-07-31 "BTC-USD" $29230.111328
+P 2023-08-31 "BTC-USD" $25931.472656
+P 2023-09-29 "BTC-USD" $26911.720703
+P 2023-10-31 "BTC-USD" $34667.781250
+#+end_example

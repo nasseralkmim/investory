@@ -20,38 +20,41 @@ import datetime
 
 class Commodity:
     """Encapsulate information for a commodity"""
-    def __init__(self, ticker: str, currency: str = "$"):
-        self.ticker = ticker
-        self.file: str = f"{self.ticker}.ledger"
+    def __init__(self, commodity: str, currency: str = "$", yahoo_ticker: str = ""):
+        self.commodity = commodity
+        self.currency: str = currency
 
-        self.yahoo_name: str = self.ticker
+        if yahoo_ticker == "":
+            self.yahoo_ticker = commodity
+        else:
+            self.yahoo_ticker = yahoo_ticker
 
-        # adjust the ticker to yahoo
-        if self.ticker in ["VWCE", "SXR8"]:
-            self.yahoo_name = f"{self.ticker}.DE"
-            self.currency: str = "€"
-        elif self.ticker[-1] in ["3", "4", "1", "5"]:
+        self.file: str = f"{self.yahoo_ticker}.ledger"
+
+        # adjust the ticker to yahoo to make it easier to loop over multiple commodities
+        # if self.yahoo_ticker in ["VWCE", "SXR8"]:
+        #     self.yahoo_ticker = f"{self.yahoo_ticker}.DE"
+        #     self.currency: str = "€"
+        if self.commodity[-1] in ["3", "4", "1", "5"]:
             # if ticker end with number, it is a Brazilian stock, which has a
             # ".SA" suffix
-            self.yahoo_name = f"{self.ticker}.SA"
+            self.yahoo_ticker = f"{self.yahoo_ticker}.SA"
             self.currency = "R$"
-        elif self.ticker in ["R$", "BRL", "BRLUSD"]:
-            self.yahoo_name = "BRLUSD=X"
-            self.currency = "$"
-            self.ticker = "R$"
-            self.file = "BRLUSD.ledger"
-        elif self.ticker in ["€", "EUR", "EURUSD"]:
-            self.yahoo_name = "EURUSD=X"
-            self.ticker = "€"
-            self.currency = "$"
-            self.file = "EURUSD.ledger"
-        elif self.ticker in ["BRLEUR"]:
-            self.yahoo_name = "BRLEUR=X"
-            self.ticker = "R$"
-            self.currency = "€"
-            self.file = "BRLEUR.ledger"
-        else:
-            self.currency: str = currency
+        # elif self.yahoo_ticker in ["R$", "BRL", "BRLUSD"]:
+        #     self.yahoo_ticker = "BRLUSD=X"
+        #     self.commodity = "R$"
+        #     self.currency = "$"
+        #     self.file = "BRLUSD.ledger"
+        # elif self.yahoo_ticker in ["€", "EUR", "EURUSD"]:
+        #     self.yahoo_ticker = "EURUSD=X"
+        #     self.commodity = "€"
+        #     self.currency = "$"
+        #     self.file = "EURUSD.ledger"
+        # elif self.yahoo_ticker in ["BRLEUR"]:
+        #     self.yahoo_ticker = "BRLEUR=X"
+        #     self.commodity = "R$"
+        #     self.currency = "€"
+        #     self.file = "BRLEUR.ledger"
 
 
 def adjust_for_split(
@@ -72,7 +75,7 @@ def get_commodity_price(
 
     # get history price for the next 10 days
     # adj_ohlc: adjusts for split and dividends (default is just splits)
-    data = yq.Ticker(commodity.yahoo_name).history(
+    data = yq.Ticker(commodity.yahoo_ticker).history(
         start=date, end=date + datetime.timedelta(days=10), adj_ohlc=True
     )
 
@@ -136,8 +139,16 @@ if __name__ == "__main__":
         "--commodity",
         metavar="STRING",
         nargs=1,
-        help="Ticker form Yahoo database.",
-        required=True,
+        help="Commodity name used in the ledger (Ex. $ for USD).",
+        required=False,
+    )
+    parser.add_argument(
+        "--yahooticker",
+        metavar="STRING",
+        nargs=1,
+        help="Ticker from Yahoo database (Ex. ^VWCE for VWCE)",
+        required=False,
+        default=""
     )
     split_help = (
         "Adjust historical prices with split ratio from specified"
@@ -170,7 +181,7 @@ if __name__ == "__main__":
 
     # print(args.currency)
 
-    commodity = Commodity(args.commodity[0], args.currency)
+    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker[0])
 
     initial_date = get_initial_date(
         commodity, default_initial_date=args.begin
@@ -194,5 +205,5 @@ if __name__ == "__main__":
 
             with open(f"{commodity.file}", "a") as f:
                 f.write(
-                    f'P {date} "{commodity.ticker}" {commodity.currency}{value:f}\n'
+                    f'P {date} "{commodity.yahoo_ticker}" {commodity.currency}{value:f}\n'
                 )
