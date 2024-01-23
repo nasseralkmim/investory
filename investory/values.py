@@ -140,14 +140,13 @@ if __name__ == "__main__":
         metavar="STRING",
         nargs=1,
         help="Commodity name used in the ledger (Ex. $ for USD).",
-        required=False,
+        required=True,
     )
     parser.add_argument(
         "--yahooticker",
-        metavar="STRING",
-        nargs=1,
         help="Ticker from Yahoo database (Ex. ^VWCE for VWCE)",
         required=False,
+        type=str,
         default=""
     )
     split_help = (
@@ -179,9 +178,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # print(args.currency)
-
-    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker[0])
+    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker)
 
     initial_date = get_initial_date(
         commodity, default_initial_date=args.begin

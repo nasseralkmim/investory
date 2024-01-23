@@ -60,21 +60,29 @@ P 2017-09-29 "€" $1.18
 P 2017-10-31 "€" $1.17
 #+end_example
 
+Specify currency:
+
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
 $python -m investory.values --commodity ^BVSP --begin 2023-01-01 --currency R$
 head ^BVSP.ledger
-rm ^BVSP.ledger
+rm -rf ^BVSP.ledger
 #+end_src
 
 #+RESULTS:
-: R$
-: P 2023-01-31 "^BVSP" R$113532.00
-: P 2023-02-28 "^BVSP" R$104932.00
-: P 2023-03-31 "^BVSP" R$101882.00
-: P 2023-04-28 "^BVSP" R$104432.00
-: P 2023-05-31 "^BVSP" R$108335.00
-: P 2023-06-30 "^BVSP" R$118087.00
+#+begin_example
+
+P 2023-01-31 "^BVSP" R$113532.000000
+P 2023-02-28 "^BVSP" R$104932.000000
+P 2023-03-31 "^BVSP" R$101882.000000
+P 2023-04-28 "^BVSP" R$104432.000000
+P 2023-05-31 "^BVSP" R$108335.000000
+P 2023-06-30 "^BVSP" R$118087.000000
+P 2023-07-31 "^BVSP" R$121943.000000
+P 2023-08-31 "^BVSP" R$115742.000000
+P 2023-09-29 "^BVSP" R$116565.000000
+P 2023-10-31 "^BVSP" R$113144.000000
+#+end_example
 
 With different yahoo ticker than the commodity symbol.
 For example we can use BTC in our ledger but at Yahoo they use "BTC-USD".
@@ -88,7 +96,6 @@ rm -rf BTC-USD.ledger
 
 #+RESULTS:
 #+begin_example
-BTC
 BTC-USD
 P 2023-01-31 "BTC-USD" $23139.283203
 P 2023-02-28 "BTC-USD" $23147.353516
