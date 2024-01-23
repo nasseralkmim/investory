@@ -42,22 +42,23 @@ P 2018-04-30 "IRBR3" R$35.58
 
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity EURUSD --begin 2017-01-01
-head EURUSD.ledger
+$python -m investory.values --commodity € --yahooticker EURUSD=X --begin 2023-01-01
+head EURUSD=X.ledger
+rm -rf EURUSD=X.ledger
 #+end_src
 
 #+RESULTS:
 #+begin_example
-P 2017-01-31 "€" $1.07
-P 2017-02-28 "€" $1.06
-P 2017-03-31 "€" $1.07
-P 2017-04-28 "€" $1.09
-P 2017-05-31 "€" $1.12
-P 2017-06-30 "€" $1.14
-P 2017-07-31 "€" $1.17
-P 2017-08-31 "€" $1.19
-P 2017-09-29 "€" $1.18
-P 2017-10-31 "€" $1.17
+P 2023-01-31 "€" $1.085069
+P 2023-02-28 "€" $1.061121
+P 2023-03-31 "€" $1.090465
+P 2023-04-28 "€" $1.103205
+P 2023-05-31 "€" $1.073307
+P 2023-06-30 "€" $1.086803
+P 2023-07-31 "€" $1.102426
+P 2023-08-31 "€" $1.093255
+P 2023-09-29 "€" $1.056245
+P 2023-10-31 "€" $1.061504
 #+end_example
 
 Specify currency:
@@ -71,7 +72,6 @@ rm -rf ^BVSP.ledger
 
 #+RESULTS:
 #+begin_example
-
 P 2023-01-31 "^BVSP" R$113532.000000
 P 2023-02-28 "^BVSP" R$104932.000000
 P 2023-03-31 "^BVSP" R$101882.000000

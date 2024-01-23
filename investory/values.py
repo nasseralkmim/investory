@@ -202,5 +202,5 @@ if __name__ == "__main__":
 
             with open(f"{commodity.file}", "a") as f:
                 f.write(
-                    f'P {date} "{commodity.yahoo_ticker}" {commodity.currency}{value:f}\n'
+                    f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
                 )
