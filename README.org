@@ -19,11 +19,18 @@ The flag =-e= is for "editable" so one can edit the source code.
 
 * How to use it
 ** Values module
+*** Stock split value
+
+Considering split, this stock split on 2019-09-25 in the proportion 1:3.
+This means, that each sock turns into 3.
+In 2023-01-25 it split in the proportion 30:1.
+Every 30 stock is converted to 1.
 
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
 $python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
 head IRBR3.ledger
+rm -rf IRBR3.ledger
 #+end_src
 
 #+RESULTS:
@@ -39,6 +46,8 @@ P 2018-02-28 "IRBR3" R$29.11
 P 2018-04-02 "IRBR3" R$31.29
 P 2018-04-30 "IRBR3" R$35.58
 #+end_example
+
+*** Specify currency from commodity
 
 Specify currency:
 
@@ -63,15 +72,17 @@ P 2023-09-29 "^BVSP" R$116565.000000
 P 2023-10-31 "^BVSP" R$113144.000000
 #+end_example
 
+*** Specify different commodity name from Yahoo
+
 With different yahoo ticker than the commodity symbol.
 For example we can use € in the ledger but yahoo identifies it as "EURUSD=X".
 Or we can use BTC in our ledger but at Yahoo they use "BTC-USD".
 
 #+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity € --yahooticker EURUSD=X --begin 2023-01-01
-head EURUSD=X.ledger
-rm -rf EURUSD=X.ledger
+$python -m investory.values --commodity € --yahooticker eurusd=x --begin 2023-01-01
+head eurusd=x.ledger
+rm -rf eurusd=x.ledger
 #+end_src
 
 #+RESULTS:
@@ -108,3 +119,34 @@ P 2023-08-31 "BTC" $25931.472656
 P 2023-09-29 "BTC" $26911.720703
 P 2023-10-31 "BTC" $34667.781250
 #+end_example
+
+*** Get only the latest price to the ledger
+
+Usual functionality, get only the latest day for each month.
+
+#+begin_src sh :dir examples/values/
+date
+python=~/.venv/general/bin/python
+$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01
+head VWCE.DE.ledger
+rm -rf VWCE.DE.ledger
+#+end_src
+
+#+RESULTS:
+: Sa 03 Feb 2024 08:50:33 CET
+: P 2024-01-31 "VWCE" $110.139999
+
+However, today is 2024-02-03 and we want to check the current value of our holdings.
+
+#+begin_src sh :dir examples/values/
+date
+python=~/.venv/general/bin/python
+$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01 --latest-price
+cat VWCE.DE.ledger
+rm -rf VWCE.DE.ledger
+#+end_src
+
+#+RESULTS:
+: Sa 03 Feb 2024 08:50:34 CET
+: P 2024-01-31 "VWCE" $110.139999
+: P 2024-02-02 "VWCE" $111.339996

@@ -161,6 +161,12 @@ if __name__ == "__main__":
         type=str,
         default="$",
     )
+    parser.add_argument(
+        "--latest-price",
+        help="Get price from latest working date.",
+        required=False,
+        action='store_true',
+    )
     args = parser.parse_args()
 
     commodity = Commodity(args.commodity[0], args.currency, args.yahooticker)
@@ -189,3 +195,23 @@ if __name__ == "__main__":
                 f.write(
                     f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
                 )
+
+    # TODO: maybe there is a better design to integrate this feature.
+    # Get only the price from the latest working date
+    if args.latest_price:
+
+        # Check if this price was already registered.
+        last_date_recorded = get_last_date_recorded(commodity)
+
+        from pandas.tseries.offsets import BDay
+        last_business_date = datetime.date.today() - BDay(1)
+        if last_date_recorded.day is not last_business_date.day:
+            date, value = get_commodity_price(commodity, datetime.date.today())
+
+            # only save if there is a value
+            if not np.isnan(value):
+
+                with open(f"{commodity.file}", "a") as f:
+                    f.write(
+                        f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
+                    )
