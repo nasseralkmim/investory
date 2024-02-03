@@ -205,7 +205,10 @@ if __name__ == "__main__":
 
         from pandas.tseries.offsets import BDay
         last_business_date = datetime.date.today() - BDay(1)
-        if last_date_recorded.day is not last_business_date.day:
+        if (
+            last_date_recorded.day is not last_business_date.day
+            and last_date_recorded.day is not datetime.date.today().day
+        ):
             date, value = get_commodity_price(commodity, datetime.date.today())
 
             # only save if there is a value
