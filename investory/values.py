@@ -40,21 +40,6 @@ class Commodity:
             # ".SA" suffix
             self.yahoo_ticker = f"{self.yahoo_ticker}.SA"
             self.currency = "R$"
-        # elif self.yahoo_ticker in ["R$", "BRL", "BRLUSD"]:
-        #     self.yahoo_ticker = "BRLUSD=X"
-        #     self.commodity = "R$"
-        #     self.currency = "$"
-        #     self.file = "BRLUSD.ledger"
-        # elif self.yahoo_ticker in ["€", "EUR", "EURUSD"]:
-        #     self.yahoo_ticker = "EURUSD=X"
-        #     self.commodity = "€"
-        #     self.currency = "$"
-        #     self.file = "EURUSD.ledger"
-        # elif self.yahoo_ticker in ["BRLEUR"]:
-        #     self.yahoo_ticker = "BRLEUR=X"
-        #     self.commodity = "R$"
-        #     self.currency = "€"
-        #     self.file = "BRLEUR.ledger"
 
 
 def adjust_for_split(
