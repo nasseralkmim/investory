@@ -195,13 +195,13 @@ def save_output(inventory_list: list[Inventory]) -> None:
     # group the dataframe by year and save csv
     # TODO: Make it more robust, right now it the date format is hard coded
     consolidated_inventory = consolidated_inventory
-    grouped_by_year = consolidated_inventory.groupby(pd.Grouper(key="date", freq="Y"))
-    for group in grouped_by_year.groups:
-        group_df = grouped_by_year.get_group(group)
-        filename = group_df["file"].iloc[0]
-        # remove the file column
-        group_df = group_df.drop("file", axis=1)
-        group_df.to_csv(f"{filename[:-4]}.out.csv", index=False)
+    grouped_by_year = consolidated_inventory.groupby(pd.Grouper(key="date", freq="YE"))
+    for group, group_data in grouped_by_year:
+        if not group_data.empty:
+            filename = group_data["file"].iloc[0]
+            # remove the file column
+            group_data = group_data.drop("file", axis=1)
+            group_data.to_csv(f"{filename[:-4]}.out.csv", index=False)
 
 
 if __name__ == "__main__":
