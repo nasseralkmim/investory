@@ -1,0 +1,4 @@
+date,type,ticker,vol,price,fee,name,CNPJ
+01/03/2023,split,AAAA,200,0.,0.0,X,Y
+01/05/2023,buy,AAAA,50,4.,1.0,X,Y
+01/06/2023,sell,AAAA,50,8.,1.5,X,Y

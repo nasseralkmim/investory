@@ -3,13 +3,15 @@ version = "0.0.1"
 name = "investory"
 dependencies = ["pandas", "yahooquery"]
 
-[tool.flake8]
-max-line-length = 88            # same as black
-
-# language server also use pycodestyle
-[tool.pycodestyle]
-max-line-length = 120
-
 [tool.pyright]
 venvPath = "/home/nasser/.venv/"
 venv = "general"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = ["E", "E4", "E9", "F", "W"]
+ignore = [
+  # "E501"                        # line lentgh
+]

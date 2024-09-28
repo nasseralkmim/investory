@@ -39,6 +39,19 @@ def csv_file_3(tmp_path):
     return file_path
 
 
+@pytest.fixture
+def csv_file_4(tmp_path):
+    csv_data = '''date,type,ticker,vol,price,fee,name,CNPJ
+01/03/2023,split,AAAA,200,0.,0.0,X,Y
+01/05/2023,buy,AAAA,50,4.,1.0,X,Y
+01/06/2023,sell,AAAA,50,8.,1.5,X,Y'''
+
+    file_path = os.path.join(tmp_path, 'input_file4.csv')
+    with open(file_path, 'w') as f:
+        f.write(csv_data)
+    return file_path
+
+
 def test_inventory_cost(csv_file_1, csv_file_2):
     files = [
         csv_file_1,
@@ -113,5 +126,27 @@ def test_split_transaction(csv_file_1, csv_file_2, csv_file_3):
     assert df.loc[df["date"] == "2023-01-05", "average cost"].values[0] == 2300 / 450
 
 
+def test_fee(csv_file_4):
+    files = [
+        csv_file_4
+    ]
+    transactions = costbasis.collect_transactions(files)
+    transactions = costbasis.adjust_volume(transactions)
+    inventory_list = costbasis.generate_aggregate_inventory(transactions)
+    df = inventory_list[0].transactions
+    print(df)
+    # buy 50 @ 4 - 1 = 199
+    assert df.loc[df["date"] == "2023-01-05", "transaction cost"].values[0] == 199.0
+    # sell - 50 @ 8 - 1.5 = 398.5
+    assert df.loc[df["date"] == "2023-01-06", "transaction cost"].values[0] == -398.5
+    # check if split transaction has inventary cost that is a number and not NaN
+    assert df.loc[df["date"] == "2023-01-03", "transaction cost"].values[0] == 0.0
+
+
 if __name__ == "__main__":
-    test_split_transaction("test1.csv", "test2.csv", "test3.csv")
+    # test_split_transaction(
+    #     "transactions_examples/test1.csv",
+    #     "transactions_examples/test2.csv",
+    #     "transactions_examples/test3.csv",
+    #                        )
+    test_fee("transactions_examples/test6.csv")

@@ -64,19 +64,35 @@ class Inventory:
         """
         self.transactions["epoch"] = (self.transactions["type"] == "sell").cumsum()
 
-    def _compute_transaction_cost(self) -> pd.DataFrame:
+    def _compute_transaction_cost(self) -> None:
         """Compute the total cost for each transaction."""
         self.transactions["transaction cost"] = (
             self.transactions["vol"] * self.transactions["price"]
         )
+        if "fee" in self.transactions.columns:
+            # Since selling the vol is negative, this makes the transaction cost
+            # negative. To deduct the fee we need to use the sign of the transaction.
+            # For example, a selling transaction, with negative cost:
+            # - cost - (-) fee = - cost + fee.
+            sign = (
+                self.transactions["transaction cost"]
+                / self.transactions["transaction cost"].abs()
+            )
+            # When split, the transaction cost will be zero, therefore the sign with be
+            # NaN, so we just change it to 1.
+            sign = sign.fillna(1)
+            self.transactions["transaction cost"] -= (sign)*self.transactions["fee"]
 
     def _set_inventory(self) -> None:
         """Set the current inventory for each transaction."""
         self.transactions["inventory"] = self.transactions["vol"].cumsum()
 
         # also set inventory before split for using hledger csv rules
-        # initialize the column because missing balues are float
-        self.transactions.insert(len(self.transactions.columns), "inventory before split", 0)
+        # initialize the column because missing values are float
+        self.transactions.insert(
+            len(self.transactions.columns), "inventory before split", 0.0
+        )
+
         self.transactions.loc[
             self.transactions["type"] == "split", "inventory before split"
         ] = (
@@ -84,7 +100,7 @@ class Inventory:
             - self.transactions.loc[self.transactions["type"] == "split", "vol"]
         )
 
-    def _compute_inventory_cost(self) -> pd.DataFrame:
+    def _compute_inventory_cost(self) -> None:
         """Compute the total inventory cost for each transaction.
 
         The inventory cost is the current total cost of all lots in the
@@ -140,7 +156,7 @@ class Inventory:
         period 1.
 
         .. [1] https://www.investopedia.com/terms/a/averagecostmethod.asp
-        """
+        """ # noqa: E501
         # divide the data frame for each epoch
         epoch_groups = self.transactions.groupby("epoch")
         epoch_trades_list = [epoch_groups.get_group(x) for x in epoch_groups.groups]
@@ -148,7 +164,7 @@ class Inventory:
         # process each epoch separately
         inventory, inventory_cost = 0, 0.0
         avg_cost = 0
-        for epoch, epoch_trades in enumerate(epoch_trades_list):
+        for _, epoch_trades in enumerate(epoch_trades_list):
 
             # loop over each transaction
             for trade in epoch_trades.itertuples():
@@ -157,7 +173,8 @@ class Inventory:
                     inventory += trade.vol
                     self.transactions.loc[trade.Index, "inventory"] = inventory
 
-                    # inventory cost based on previous inventory cost and current buy transactions
+                    # inventory cost based on previous inventory cost and current buy
+                    # transactions
                     inventory_cost += trade.vol * trade.price
                     self.transactions.loc[trade.Index, "inventory cost"] = inventory_cost
 
@@ -171,7 +188,8 @@ class Inventory:
                     # average cost is the previous average cost
                     self.transactions.loc[trade.Index, "average cost"] = avg_cost
 
-                    # inventory cost based on previous inventory cost current average cost
+                    # inventory cost based on previous inventory cost current average
+                    # cost
                     inventory_cost += trade.vol * avg_cost
                     self.transactions.loc[trade.Index, "inventory cost"] = inventory_cost
 
