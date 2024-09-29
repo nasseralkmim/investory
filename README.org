@@ -1,4 +1,7 @@
 * Introduction
+
+Simple collection of module and function based on Python Pandas to manage an investment portfolio treated as an inventory of items.
+
 * Features
 * Installing
 
@@ -18,6 +21,9 @@ The flag =-e= is for "editable" so one can edit the source code.
 [fn:1] https://packaging.python.org/en/latest/tutorials/installing-packages/#creating-virtual-environments 
 
 * How to use it
+:PROPERTIES:
+:header-args: :exports both
+:END:
 ** Values module
 *** Stock split value
 
