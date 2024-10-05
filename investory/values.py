@@ -108,8 +108,8 @@ def get_split_ratio_and_date(input: str) -> tuple[float, datetime.date]:
     # Example:
     #
     # 30:1 (ratio_from:ratio_to) if we have 60 stocks we get 60 * 1 / 30 = 2
-    ratio_from: int = int(ratio_.split(":")[0])
-    ratio_to: int = int(ratio_.split(":")[1])
+    ratio_from: float = float(ratio_.split(":")[0])
+    ratio_to: float = float(ratio_.split(":")[1])
     ratio: float = float(ratio_to / ratio_from)
 
     date: datetime.date = datetime.datetime.strptime(date_, "%Y-%m-%d").date()
