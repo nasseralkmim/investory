@@ -40,7 +40,11 @@ def adjust_volume(transactions: pd.DataFrame) -> pd.DataFrame:
 
 
 class Inventory:
-    """Defines the inventory object to keep track of commodity lots."""
+    """Defines the inventory object to keep track of commodity lots.
+
+    For example, an inventory of a company stock, or an etf share. Each will be an
+    independent inventory.
+    """
 
     def __init__(self, transactions: pd.DataFrame):
         self.transactions = transactions.copy()
@@ -225,8 +229,16 @@ def save_output(inventory_list: list[Inventory]) -> None:
 if __name__ == "__main__":
 
     import argparse
-    parser = argparse.ArgumentParser(description="Process multiple file paths")
-    parser.add_argument("file_paths", metavar="FILE_PATHS", nargs="+", help="File paths to process")
+    parser = argparse.ArgumentParser(
+        description="Process multiple file paths with whole transaction records."
+    )
+    parser.add_argument(
+        "file_paths",
+        metavar="FILE_PATHS",
+        nargs="+",
+        help="Files with transaction records to process",
+    )
+
     args = parser.parse_args()
 
     files = []
