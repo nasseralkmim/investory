@@ -32,36 +32,25 @@ This means, that each sock turns into 3.
 In 2023-01-25 it split in the proportion 30:1.
 Every 30 stock is converted to 1.
 
-#+begin_src sh :dir examples/values/
-python=~/.venv/general/bin/python
-$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
-head IRBR3.ledger
-rm -rf IRBR3.ledger
-#+end_src
+The historical price of the asset should be adjusted for the split.
+In 2019-08-30, the price was 82.33.
+In the following month the stock split into three, so the price should be reduced by the same factor.
+The closing price on the next month 2019-09-30 is 28.57. 
 
-#+RESULTS:
-#+begin_example
-P 2017-07-31 "IRBR3" R$21.65
-P 2017-08-31 "IRBR3" R$22.18
-P 2017-09-29 "IRBR3" R$22.36
-P 2017-10-31 "IRBR3" R$24.26
-P 2017-11-30 "IRBR3" R$25.84
-P 2017-12-29 "IRBR3" R$25.57
-P 2018-01-31 "IRBR3" R$28.24
-P 2018-02-28 "IRBR3" R$29.11
-P 2018-04-02 "IRBR3" R$31.29
-P 2018-04-30 "IRBR3" R$35.58
-#+end_example
+#+begin_src sh :dir examples/values/ :results silent
+python=~/.venv/general/bin/python
+pueue add "$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26"
+pueue clean
+#+end_src
 
 *** Specify currency from commodity
 
 Specify currency:
 
-#+begin_src sh :dir examples/values/
+#+begin_src sh :dir examples/values/ :results silent
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity ^BVSP --begin 2023-01-01 --currency R$
-head ^BVSP.ledger
-rm -rf ^BVSP.ledger
+pueue add "$python -m investory.values --commodity ^BVSP --begin 2023-01-01 --currency R$"
+pueue clean
 #+end_src
 
 #+RESULTS:
@@ -84,70 +73,47 @@ With different yahoo ticker than the commodity symbol.
 For example we can use € in the ledger but yahoo identifies it as "EURUSD=X".
 Or we can use BTC in our ledger but at Yahoo they use "BTC-USD".
 
-#+begin_src sh :dir examples/values/
+#+begin_src sh :dir examples/values/ :results silent
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity € --yahooticker eurusd=x --begin 2023-01-01
-head eurusd=x.ledger
-rm -rf eurusd=x.ledger
+pueue add "$python -m investory.values --commodity € --yahooticker eurusd=x --begin 2023-01-01"
+pueue clean
 #+end_src
 
-#+RESULTS:
-#+begin_example
-P 2023-01-31 "€" $1.085069
-P 2023-02-28 "€" $1.061121
-P 2023-03-31 "€" $1.090465
-P 2023-04-28 "€" $1.103205
-P 2023-05-31 "€" $1.073307
-P 2023-06-30 "€" $1.086803
-P 2023-07-31 "€" $1.102426
-P 2023-08-31 "€" $1.093255
-P 2023-09-29 "€" $1.056245
-P 2023-10-31 "€" $1.061504
-#+end_example
-
-#+begin_src sh :dir examples/values/
+#+begin_src sh :dir examples/values/ :results silent
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity BTC --yahooticker BTC-USD --begin 2023-01-01
-head BTC-USD.ledger
-rm -rf BTC-USD.ledger
+pueue add "$python -m investory.values --commodity BTC --yahooticker BTC-USD --begin 2023-01-01"
+pueue clean
 #+end_src
-
-#+RESULTS:
-#+begin_example
-P 2023-01-31 "BTC" $23139.283203
-P 2023-02-28 "BTC" $23147.353516
-P 2023-03-31 "BTC" $28478.484375
-P 2023-04-28 "BTC" $29340.261719
-P 2023-05-31 "BTC" $27219.658203
-P 2023-06-30 "BTC" $30477.251953
-P 2023-07-31 "BTC" $29230.111328
-P 2023-08-31 "BTC" $25931.472656
-P 2023-09-29 "BTC" $26911.720703
-P 2023-10-31 "BTC" $34667.781250
-#+end_example
 
 *** Get only the latest price to the ledger
 
 Usual functionality, get only the latest day for each month.
 
-#+begin_src sh :dir examples/values/
+#+begin_src sh :dir examples/values/ :results silent
 date
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01
+pueue add "$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-08-01"
+pueue clean
+#+end_src
+
+#+begin_src sh :dir examples/values/
 head VWCE.DE.ledger
 rm -rf VWCE.DE.ledger
 #+end_src
 
 #+RESULTS:
-: Sa 03 Feb 2024 08:50:33 CET
-: P 2024-01-31 "VWCE" $110.139999
+: P 2024-08-30 "VWCE" $123.019997
+: P 2024-09-30 "VWCE" $125.199997
 
 However, today is 2024-02-03 and we want to check the current value of our holdings.
 
-#+begin_src sh :dir examples/values/
+#+begin_src sh :dir examples/values/ :results silent
 date
 python=~/.venv/general/bin/python
-$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01 --latest-price
+pueue add "$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01 --latest-price"
+#+end_src
+
+#+begin_src sh :dir examples/values/
 cat VWCE.DE.ledger
 rm -rf VWCE.DE.ledger
 #+end_src
@@ -156,4 +122,22 @@ rm -rf VWCE.DE.ledger
 : Sa 03 Feb 2024 08:50:34 CET
 : P 2024-01-31 "VWCE" $110.139999
 : P 2024-02-02 "VWCE" $111.339996
+
+** Cost basis module
+
+See tests.
+
+** Reports
+
+#+begin_src sh :dir examples/reports/
+python=~/.venv/general/bin/python
+# pueue add "$python -m investory.reports"
+# pueue clean
+$python -m investory.reports
+#+end_src
+
+#+RESULTS:
+: ./source/reit-2020.csv
+: ./source/stocks-2018.csv
+: ./source/etf-2021.csv
 
