@@ -223,10 +223,15 @@ def save_output(inventory_list: list[Inventory]) -> None:
     grouped_by_year = consolidated_inventory.groupby(pd.Grouper(key="date", freq="YE"))
     for group, group_data in grouped_by_year:
         if not group_data.empty:
-            filename = group_data["file"].iloc[0]
+            path = group_data["file"].iloc[0]
+            basename = os.path.basename(path)
+            dirname = os.path.dirname(path)
+            if not dirname:
+                dirname = "./"
+            os.makedirs(f"{dirname}/processed", exist_ok=True)
             # remove the file column
             group_data = group_data.drop("file", axis=1)
-            group_data.to_csv(f"{filename[:-4]}.out.csv", index=False)
+            group_data.to_csv(f"{dirname}/processed/{basename[:-4]}.out.csv", index=False)
 
 
 if __name__ == "__main__":
