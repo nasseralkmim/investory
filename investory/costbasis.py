@@ -5,6 +5,9 @@ The cost basis used is the *average cost*.
 
 """
 import pandas as pd
+import glob
+import os
+import sys
 
 pd.set_option("display.max_rows", 500)
 pd.set_option("display.max_columns", 500)
@@ -239,14 +242,21 @@ if __name__ == "__main__":
         help="Files with transaction records to process",
     )
 
-    args = parser.parse_args()
+    # Expand wildcard patterns before parsing arguments
+    expanded_args = []
+    for arg in sys.argv[1:]:
+        expanded_args.extend(glob.glob(arg))
 
-    files = []
+    # If no files were found, use the original arguments
+    if not expanded_args:
+        expanded_args = sys.argv[1:]
 
-    print("Processing trades from the files: \n")
-    for file_path in args.file_paths:
-        print(file_path)
-        files.append(file_path)
+    args = parser.parse_args(expanded_args)
+
+    # Now args.file_paths will contain the list of expanded file paths
+    files = args.file_paths
+
+    print(f"Processing files: {files}")
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
