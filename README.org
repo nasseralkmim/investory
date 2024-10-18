@@ -136,6 +136,14 @@ python=~/.venv/general/bin/python
 $python -m investory.reports
 #+end_src
 
+
+#+begin_src sh :dir examples/reports/
+python=~/.venv/general/bin/python
+# pueue add "$python -m investory.reports"
+# pueue clean
+$python -m investory.reports
+#+end_src
+
 #+RESULTS:
 : ./source/reit-2020.csv
 : ./source/stocks-2018.csv

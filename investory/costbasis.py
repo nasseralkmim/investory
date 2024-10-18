@@ -261,7 +261,8 @@ if __name__ == "__main__":
     # Now args.file_paths will contain the list of expanded file paths
     files = args.file_paths
 
-    print(f"Processing files: {files}")
+    for file in files:
+        print(f"processing cost basis {file}")
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
