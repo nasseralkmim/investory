@@ -2,11 +2,68 @@
 # ruff: noqa: E501
 import os
 import subprocess
+import io
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 
 from typing import List
 
-DATA = "/home/nasser/Sync/documents/admin/finances/data/"
+import figtex
+
+
+figtex.style()
+DATA = "/home/nasser/Sync/documents/admin/finances/data"
+
+
+def clean_currency(value):
+    """Clean currency value in a string."""
+    if isinstance(value, str):
+        return value.replace('R$', '')
+    return value
+
+
+def generate_asset_distribution_graph(period: int, ledger: str) -> None:
+    """Generate pie plot for asset distribution."""
+    command: list[str] = [
+        "hledger",
+        "-f", f"{ledger}",
+        "-f", f"{DATA}/prices/BRLUSD=X.ledger",
+        "-f", f"{DATA}/prices/EURUSD=X.ledger",
+        "bal", "acct:^assets:investments",
+        "--end", f"{period + 1}",
+        "--drop", "2",
+        "--depth", "3",
+        "--value=end,R$",
+        "--no-total",
+        "--infer-market-prices",
+        "-O", "csv"
+    ]
+
+    process = subprocess.Popen(command,
+                               stdout=subprocess.PIPE,
+                               shell=False,
+                               universal_newlines=True)
+    output, _ = process.communicate()
+    csv_data: io.StringIO = io.StringIO(output)
+    df: pd.DataFrame = pd.read_csv(csv_data)
+    df["balance"] = df["balance"].apply(clean_currency).astype(float)
+
+    fig, ax = plt.subplots(figsize=(4, 4))
+    if df.empty:
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.text(0.5, 0.5, 'No data available',
+                ha='center', va='center', fontsize=12)
+        ax.axis('off')  # Hide axes
+    else:
+        df.plot.pie(y="balance", labels=df["account"],
+                    ylabel="",
+                    ax=ax)
+        plt.title('Asset Distribution')
+    fig.savefig(f"reports/{period}/asset-distribution.svg",
+                bbox_inches="tight")
 
 
 def run_command(command: str) -> str:
@@ -16,8 +73,10 @@ def run_command(command: str) -> str:
     return result.stdout.strip()
 
 
-def generate_report(period, ledger):
+def generate_report(period: int, ledger: str):
     os.makedirs(f"reports/{period}", exist_ok=True)
+
+    generate_asset_distribution_graph(period, ledger)
 
     commands = [
         # Income statement
@@ -31,7 +90,7 @@ def generate_report(period, ledger):
         f"echo -en '* Full Income statement monthly\n' >> reports/{period}/is-{period}.org",
         f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty --layout tall >> reports/{period}/is-{period}.org",
         # Balance sheet
-        f"echo -en '* Monthly investments evolution graph\n[[file:investments-{period}.svg]]\n' > reports/{period}/bs-{period}.org",
+        f"echo -en '* Monthly investments evolution graph\n[[file:investments-{period}.svg]] [[file:asset-distribution.svg]]\n' > reports/{period}/bs-{period}.org",
         f"echo -en '* Summary balance sheet last three years\n' >> reports/{period}/bs-{period}.org",
         f"hledger -f {ledger} bs --tree --pretty --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,€ -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/{period}/bs-{period}.org",
         f"echo -en '* Balance sheet valued at period ends\n' >> reports/{period}/bs-{period}.org",
@@ -71,7 +130,7 @@ if __name__ == "__main__":
         "--ledger", help="Ledger file", required=False, type=str, default="all.ledger"
     )
     args = parser.parse_args()
-    periods = get_ledger_years(args.ledger)
+    periods: list[int] = get_ledger_years(args.ledger)
 
     # Each process (CPU) runs the function for a period simultaneously
     with ProcessPoolExecutor(max_workers=len(periods)) as executor:
