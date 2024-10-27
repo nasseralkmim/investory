@@ -262,7 +262,7 @@ if __name__ == "__main__":
     files = args.file_paths
 
     for file in files:
-        print(f"processing cost basis {file}")
+        print(f"processing cost basis {os.path.basename(file)}")
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
