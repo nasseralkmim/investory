@@ -44,6 +44,10 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
     df = df.replace("R\\$", "", regex=True)
     df["balance"] = df["balance"].apply(pd.to_numeric)
 
+    # Avoid problems with negative values
+    negative_df = df[df["balance"] < 0]
+    df = df[df["balance"] >= 0]
+
     fig, ax = plt.subplots(figsize=(3, 3))
     if df.empty:
         ax.set_xlim(0, 1)
@@ -56,7 +60,12 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                     ylabel="",
                     ax=ax)
         plt.title('Asset Distribution')
-    fig.savefig(f"reports/{period}/asset-distribution.svg",
+        
+        # display negative values as information text
+        if not negative_df.empty:
+            
+        
+    fig.savefig("reports/asset-distribution.svg",
                 bbox_inches="tight", transparent=True)
 
 
@@ -75,10 +84,14 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
         "--value=end,R$",
         "--no-total",
         "--infer-market-prices",
+        "-O", "csv"
     ]
+
+    plot_dir = "reports"
 
     if period != 0:
         command.extend(["--end", f"{period + 1}"])
+        plot_dir = f"reports/{period}"
 
     process = subprocess.Popen(command,
                                stdout=subprocess.PIPE,
@@ -103,7 +116,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     else:
         df.plot.area(ax=ax)
         plt.title('Asset Evolution')
-    fig.savefig(f"reports/{period}/asset-evolution.svg",
+    fig.savefig(f"{plot_dir}/asset-evolution.svg",
                 bbox_inches="tight", transparent=True)
 
 
@@ -158,13 +171,13 @@ def generate_summary_report(ledger: str, currency: str = "€"):
         # Balance sheet
         "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
         "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 3 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/summary.org",
+        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/summary.org",
     ]
 
     for command in commands:
         run_command(command)
 
-        print("Completed summary report")
+    print("Completed summary report")
 
 
 def get_ledger_years(ledger_file: str) -> List[int]:
@@ -194,15 +207,16 @@ if __name__ == "__main__":
     periods: list[int] = get_ledger_years(args.ledger)
 
     # Each process (CPU) runs the function for a period simultaneously
-    with ProcessPoolExecutor(max_workers=len(periods)) as executor:
-        futures: List[Future] = [
-            executor.submit(generate_yearly_report, period, args.ledger, args.currency)
-            for period in periods
-        ]
-        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
+    # with ProcessPoolExecutor(max_workers=len(periods)) as executor:
+    #     futures: List[Future] = [
+    #         executor.submit(generate_yearly_report, period, args.ledger, args.currency)
+    #         for period in periods
+    #     ]
+    #     futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
 
-        for future in as_completed(futures):
-            future.result()
+    #     for future in as_completed(futures):
+    #         future.result()
+    generate_summary_report(args.ledger, args.currency)
 
 # Local Variables:
 # jinx-local-words: "bs bs-"
