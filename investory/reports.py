@@ -60,11 +60,15 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                     ylabel="",
                     ax=ax)
         plt.title('Asset Distribution')
-        
+
         # display negative values as information text
         if not negative_df.empty:
-            
-        
+            for i in range(len(negative_df)):
+                account = negative_df.iloc[i]["account"]
+                balance = negative_df.iloc[i]["balance"]
+                ax.text(0.5, 0.5, f"Negative values:\n{account}: {balance}",
+                        ha='center', va='center', fontsize=12)
+
     fig.savefig("reports/asset-distribution.svg",
                 bbox_inches="tight", transparent=True)
 
@@ -105,6 +109,10 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     # convert columns name to datetime
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
+
+    # Avoid problems with negative balances in the plot.
+    # Replace negative values with np.NaN
+    df = df.where(df >= 0)
 
     fig, ax = plt.subplots(figsize=(8, 3))
     if df.empty:
