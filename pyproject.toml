@@ -1,7 +1,10 @@
 [project]
 version = "0.0.1"
 name = "investory"
-dependencies = ["pandas", "yahooquery"]
+dependencies = [
+  "pandas",
+  "matplotlib",
+  "yahooquery"]
 
 [tool.pyright]
 venvPath = "/home/nasser/.venv/"
