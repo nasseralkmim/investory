@@ -44,6 +44,9 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
     df = df.replace("R\\$", "", regex=True)
     df["balance"] = df["balance"].apply(pd.to_numeric)
 
+    # Assign a predefines color for each account using index number and "C" prefix
+    df["color"] = df.index.map(lambda x: f"C{x}")
+
     # Avoid problems with negative values
     negative_df = df[df["balance"] < 0]
     df = df[df["balance"] >= 0]
@@ -109,6 +112,9 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     # convert columns name to datetime
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
+
+    # Assign a predefines color for each account using index number and "C" prefix
+    df["color"] = df.index.map(lambda x: f"C{x}")
 
     # Avoid problems with negative balances in the plot.
     # Replace negative values with np.NaN
