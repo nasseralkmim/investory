@@ -113,10 +113,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
 
-    # Assign a predefines color for each account using index number and "C" prefix
-    df["color"] = df.index.map(lambda x: f"C{x}")
-
-    # Avoid problems with negative balances in the plot.
+    # Avoid problems with negative balances in the plot. AI
     # Replace negative values with np.NaN
     df = df.where(df >= 0)
 
@@ -175,7 +172,7 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
     for command in commands:
         run_command(command)
 
-        print(f"Completed report for period: {period}")
+    print(f"Completed report for period: {period}")
 
 
 def generate_summary_report(ledger: str, currency: str = "€"):
@@ -185,7 +182,9 @@ def generate_summary_report(ledger: str, currency: str = "€"):
         # Balance sheet
         "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
         "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/summary.org",
+        "echo -en '\n#+begin_export html\n' >> reports/summary.org",
+        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly --output-format html >> reports/summary.org",
+        "echo -en '\n#+end_export' >> reports/summary.org",
     ]
 
     for command in commands:
@@ -230,8 +229,6 @@ if __name__ == "__main__":
 
         for future in as_completed(futures):
             future.result()
-
-    generate_summary_report(args.ledger, args.currency)
 
 # Local Variables:
 # jinx-local-words: "bs bs-"
