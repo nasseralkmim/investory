@@ -3,3 +3,5 @@
 /investory.egg-info/
 /tests/*.csv
 *.pyc
+.aider*
+.env

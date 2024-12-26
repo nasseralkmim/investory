@@ -215,15 +215,16 @@ if __name__ == "__main__":
     periods: list[int] = get_ledger_years(args.ledger)
 
     # Each process (CPU) runs the function for a period simultaneously
-    # with ProcessPoolExecutor(max_workers=len(periods)) as executor:
-    #     futures: List[Future] = [
-    #         executor.submit(generate_yearly_report, period, args.ledger, args.currency)
-    #         for period in periods
-    #     ]
-    #     futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
+    with ProcessPoolExecutor(max_workers=len(periods)) as executor:
+        futures: List[Future] = [
+            executor.submit(generate_yearly_report, period, args.ledger, args.currency)
+            for period in periods
+        ]
+        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
 
-    #     for future in as_completed(futures):
-    #         future.result()
+        for future in as_completed(futures):
+            future.result()
+
     generate_summary_report(args.ledger, args.currency)
 
 # Local Variables:
