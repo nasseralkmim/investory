@@ -106,6 +106,11 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
                                universal_newlines=True)
     output, _ = process.communicate()
     csv_data: io.StringIO = io.StringIO(output)
+
+    # Expected data frame structure
+    # index: date
+    # columns id: account names
+    # columns values: account balances
     df: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
     df = df.replace("R\\$", "", regex=True)
     df = df[df.columns].apply(pd.to_numeric)
@@ -113,7 +118,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
 
-    # Avoid problems with negative balances in the plot. AI
+    # Avoid problems with negative balances in the plot.
     # Replace negative values with np.NaN
     df = df.where(df >= 0)
 
