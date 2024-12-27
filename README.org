@@ -130,8 +130,42 @@ See tests.
 
 ** Reports
 
+Consider a simple ledger involving investments:
+
+#+begin_src ledger :tangle examples/reports/all.ledger
+2021-03-26 * buy VWCE
+    assets:investments:etf:VWCE    10.0 VWCE @ € 100
+    assets:brokerage
+
+2021-03-26 * buy AAPL
+    assets:investments:stocks:AAPL    10.0 AAPL @ € 200
+    assets:brokerage
+
+2021-03-26 * buy BTC
+    assets:investments:crypto:BTC    1 BTC @ € 1000
+    assets:brokerage
+    
+2022-04-17 * buy VWCE
+    assets:investments:etf:VWCE    10.0 VWCE @ € 200
+    assets:brokerage
+
+2022-03-26 * buy AAPL
+    assets:investments:stocks:AAPL    10.0 AAPL @ € 300
+    assets:brokerage
+
+2021-12-26 * sell BTC
+    assets:investments:crypto:BTC    -1 BTC @ € 10000
+    assets:brokerage
+#+end_src
+
+Reports are generated with the command:
+
 #+begin_src sh :dir examples/reports/ :results silent
 python=~/.venv/general/bin/python
 pueue add "$python -m investory.reports"
 pueue clean
 #+end_src
+
+It generates a report for each year, and a summary with current position.
+
+[[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
