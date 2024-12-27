@@ -17,6 +17,47 @@ figtex.style()
 DATA = "/home/nasser/Sync/documents/admin/finances/data"
 
 
+def get_account_colors(ledger: str) -> dict[str, str]:
+    """Get a dictionary mapping accounts to colors.
+
+    Even if an account has zero balance, it will have a color assigned to it.
+    """
+    # Run the hledger command and capture the output
+    # NOTE: accounts names hard coded: 'assets:investments'
+    accounts_output = (
+        subprocess.check_output(
+            [
+                "hledger",
+                "-f",
+                f"{ledger}",
+                "accounts",
+                "assets:investments",
+                "--drop",
+                "2",
+                "--depth",
+                "3",
+            ]
+        )
+        .decode("utf-8")
+        .strip()
+    )
+
+    # Split the output into individual account names
+    accounts = accounts_output.split("\n")
+
+    # Define a list of colors using "C" and numeric suffix
+    colors = ["C" + str(i) for i in range(0, 10)]
+
+    # Create a dictionary mapping accounts to colors
+    account_colors = {}
+    for i, account in enumerate(accounts):
+        account_colors[account] = colors[
+            i % len(colors)
+        ]
+
+    return account_colors
+
+
 def generate_asset_distribution_graph(period: int, ledger: str) -> None:
     """Generate pie plot for asset distribution."""
     command: list[str] = [
@@ -40,16 +81,21 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                                universal_newlines=True)
     output, _ = process.communicate()
     csv_data: io.StringIO = io.StringIO(output)
+
+    # Expected data frame structure
+    # column 1: account names
+    # column 2: account balances
     df: pd.DataFrame = pd.read_csv(csv_data)
     df = df.replace("R\\$", "", regex=True)
     df["balance"] = df["balance"].apply(pd.to_numeric)
 
-    # Assign a predefines color for each account using index number and "C" prefix
-    df["color"] = df.index.map(lambda x: f"C{x}")
-
     # Avoid problems with negative values
     negative_df = df[df["balance"] < 0]
     df = df[df["balance"] >= 0]
+
+    account_to_color = get_account_colors(ledger)
+    colors = [account_to_color[account] for account in df["account"]]
+    print(colors)
 
     fig, ax = plt.subplots(figsize=(3, 3))
     if df.empty:
@@ -60,6 +106,7 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
         ax.axis('off')  # Hide axes
     else:
         df.plot.pie(y="balance", labels=df["account"],
+                    colors=colors,
                     ylabel="",
                     ax=ax)
         plt.title('Asset Distribution')
@@ -118,6 +165,8 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
 
+    account_to_color = get_account_colors(ledger)
+
     # Avoid problems with negative balances in the plot.
     # Replace negative values with np.NaN
     df = df.where(df >= 0)
@@ -130,7 +179,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
                 ha='center', va='center', fontsize=12)
         ax.axis('off')  # Hide axes
     else:
-        df.plot.area(ax=ax)
+        df.plot.area(ax=ax, color=account_to_color)
         plt.title('Asset Evolution')
     fig.savefig(f"{plot_dir}/asset-evolution.svg",
                 bbox_inches="tight", transparent=True)
