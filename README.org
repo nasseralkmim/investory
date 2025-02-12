@@ -162,8 +162,7 @@ Reports are generated with the command:
 
 #+begin_src sh :dir examples/reports/ :results silent
 python=~/.venv/general/bin/python
-pueue add "$python -m investory.reports"
-pueue clean
+$python -m investory.reports
 #+end_src
 
 It generates a report for each year, and a summary with current position.
