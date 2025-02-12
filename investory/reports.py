@@ -1,17 +1,13 @@
 """Generate reports with hledger."""
 # ruff: noqa: E501
+import io
 import os
 import subprocess
-import io
-import pandas as pd
-import matplotlib.pyplot as plt
-
-from concurrent.futures import ProcessPoolExecutor, as_completed, Future
-
-from typing import list
+from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
 import figtex
-
+import matplotlib.pyplot as plt
+import pandas as pd
 
 figtex.style()
 DATA = "/home/nasser/Sync/documents/admin/finances/data"
