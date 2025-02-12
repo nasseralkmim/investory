@@ -80,7 +80,7 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                                shell=False,
                                universal_newlines=True)
     output, _ = process.communicate()
-    csv_ io.StringIO = io.StringIO(output)
+    csv_data = io.StringIO(output)
 
     # Expected data frame structure
     # column 1: account names
@@ -152,7 +152,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
                                shell=False,
                                universal_newlines=True)
     output, _ = process.communicate()
-    csv_ io.StringIO = io.StringIO(output)
+    csv_data = io.StringIO(output)
 
     # Expected data frame structure
     # index: date
