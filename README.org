@@ -24,8 +24,37 @@ cd ~/.local/src/investory/
 * How to use it
 :PROPERTIES:
 :header-args: :exports both
+:header-args:sh+: :prologue source ~/.venv/general/bin/activate
 :END:
 ** Values module
+*** Basic functionality
+
+Get commodity (given as yahoo ticker) price for each month.
+The price is saved in a ledger file named ~ticker.ledger~.
+
+#+begin_src sh :dir examples/values/ :results silent :async yes :session inv
+python -m investory.values --commodity AAPL --begin 2021-01-01
+#+end_src
+
+#+begin_src sh :dir examples/values/
+head VWCE.DE.ledger
+rm VWCE.DE.ledger
+#+end_src
+
+#+RESULTS: 
+#+begin_example
+P 2024-01-31 "VWCE.DE" $110.139999
+P 2024-02-29 "VWCE.DE" $114.220001
+P 2024-04-02 "VWCE.DE" $117.459999
+P 2024-04-30 "VWCE.DE" $116.239998
+P 2024-05-31 "VWCE.DE" $117.519997
+P 2024-06-28 "VWCE.DE" $123.180000
+P 2024-07-31 "VWCE.DE" $123.500000
+P 2024-08-30 "VWCE.DE" $123.019997
+P 2024-09-30 "VWCE.DE" $125.199997
+P 2024-10-31 "VWCE.DE" $126.220001
+#+end_example
+
 *** Stock split value
 
 Considering split, this stock split on 2019-09-25 in the proportion 1:3.
@@ -39,10 +68,15 @@ In the following month the stock split into three, so the price should be reduce
 The closing price on the next month 2019-09-30 is 28.57. 
 
 #+begin_src sh :dir examples/values/
-python=~/.venv/general/bin/python
-$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
+python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
 grep 2023-01-02 IRBR3.ledger
 grep 2023-01-31 IRBR3.ledger
+#+end_src
+
+#+begin_src sh :dir examples/values/
+grep 2023-01-02 IRBR3.ledger
+grep 2023-01-31 IRBR3.ledger
+rm IRBR3.ledger
 #+end_src
 
 #+RESULTS:
@@ -53,10 +87,13 @@ grep 2023-01-31 IRBR3.ledger
 
 Specify currency:
 
-#+begin_src sh :dir examples/values/ :results silent
-python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity ^BVSP --begin 2023-01-01 --currency R$"
-pueue clean
+#+begin_src sh :dir examples/values/ 
+python -m investory.values --commodity ^BVSP --begin 2023-01-01 --currency R$
+#+end_src
+
+#+begin_src sh :dir examples/values/ 
+head ^BVSP.ledger
+rm ^BVSP.ledger
 #+end_src
 
 #+RESULTS:
@@ -77,29 +114,61 @@ P 2023-10-31 "^BVSP" R$113144.000000
 
 With different yahoo ticker than the commodity symbol.
 For example we can use € in the ledger but yahoo identifies it as "EURUSD=X".
+
+#+begin_src sh :dir examples/values/ :results silent
+python -m investory.values --commodity € --yahooticker EURUSD=X --begin 2023-01-01
+#+end_src
+
+#+begin_src sh :dir examples/values/
+head EURUSD=X.ledger
+rm EURUSD=X.ledger
+#+end_src
+
+#+RESULTS:
+#+begin_example
+P 2023-01-31 "€" $1.085069
+P 2023-02-28 "€" $1.061121
+P 2023-03-31 "€" $1.090465
+P 2023-04-28 "€" $1.103205
+P 2023-05-31 "€" $1.073307
+P 2023-06-30 "€" $1.086803
+P 2023-07-31 "€" $1.102426
+P 2023-08-31 "€" $1.093255
+P 2023-09-29 "€" $1.056245
+P 2023-10-31 "€" $1.061504
+#+end_example
+
 Or we can use BTC in our ledger but at Yahoo they use "BTC-USD".
 
 #+begin_src sh :dir examples/values/ :results silent
-python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity € --yahooticker eurusd=x --begin 2023-01-01"
-pueue clean
+python -m investory.values --commodity BTC --yahooticker BTC-USD --begin 2023-01-01
 #+end_src
 
-#+begin_src sh :dir examples/values/ :results silent
-python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity BTC --yahooticker BTC-USD --begin 2023-01-01"
-pueue clean
+#+begin_src sh :dir examples/values/
+head BTC-USD.ledger
+rm BTC-USD.ledger
 #+end_src
+
+#+RESULTS:
+#+begin_example
+P 2023-01-31 "BTC" $23139.283203
+P 2023-02-28 "BTC" $23147.353516
+P 2023-03-31 "BTC" $28478.484375
+P 2023-04-28 "BTC" $29340.261719
+P 2023-05-31 "BTC" $27219.658203
+P 2023-06-30 "BTC" $30477.251953
+P 2023-07-31 "BTC" $29230.111328
+P 2023-08-31 "BTC" $25931.472656
+P 2023-09-29 "BTC" $26911.720703
+P 2023-10-31 "BTC" $34667.781250
+#+end_example
 
 *** Get only the latest price to the ledger
 
 Usual functionality, get only the latest day for each month.
 
 #+begin_src sh :dir examples/values/ :results silent
-date
-python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-08-01"
-pueue clean
+python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-08-01
 #+end_src
 
 #+begin_src sh :dir examples/values/
@@ -110,24 +179,39 @@ rm -rf VWCE.DE.ledger
 #+RESULTS:
 : P 2024-08-30 "VWCE" $123.019997
 : P 2024-09-30 "VWCE" $125.199997
+: P 2024-10-31 "VWCE" $126.220001
+: P 2024-11-29 "VWCE" $134.559998
+: P 2025-01-02 "VWCE" $135.479996
+: P 2025-01-31 "VWCE" $138.860001
+: P 2025-02-28 "VWCE" $135.820007
+: P 2025-03-31 "VWCE" $126.080002
 
-However, today is 2024-02-03 and we want to check the current value of our holdings.
+However, we want to check the current value of our holdings *today*.
 
 #+begin_src sh :dir examples/values/ :results silent
-date
-python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01 --latest-price"
+python -m investory.values --commodity VWCE --yahooticker VWCE.DE --begin 2024-01-01 --latest-price
 #+end_src
 
 #+begin_src sh :dir examples/values/
-cat VWCE.DE.ledger
+date
+head VWCE.DE.ledger
 rm -rf VWCE.DE.ledger
 #+end_src
 
 #+RESULTS:
-: Sa 03 Feb 2024 08:50:34 CET
-: P 2024-01-31 "VWCE" $110.139999
-: P 2024-02-02 "VWCE" $111.339996
+#+begin_example
+Sa 12 Apr 2025 16:24:13 CEST
+P 2024-01-31 "VWCE" $110.139999
+P 2024-02-29 "VWCE" $114.220001
+P 2024-04-02 "VWCE" $117.459999
+P 2024-04-30 "VWCE" $116.239998
+P 2024-05-31 "VWCE" $117.519997
+P 2024-06-28 "VWCE" $123.180000
+P 2024-07-31 "VWCE" $123.500000
+P 2024-08-30 "VWCE" $123.019997
+P 2024-09-30 "VWCE" $125.199997
+P 2024-10-31 "VWCE" $126.220001
+#+end_example
 
 ** Cost basis module
 
@@ -138,38 +222,42 @@ See tests.
 Consider a simple ledger involving investments:
 
 #+begin_src ledger :tangle examples/reports/all.ledger
-2021-03-26 * buy VWCE
-    assets:investments:etf:VWCE    10.0 VWCE @ € 100
+2021-01-29 * buy VWCE
+    assets:investments:etf:VWCE    10.0 VWCE @ € 82.23
     assets:brokerage
 
 2021-03-26 * buy AAPL
-    assets:investments:stocks:AAPL    10.0 AAPL @ € 200
+    assets:investments:stocks:AAPL    10.0 AAPL @ € 118.57
     assets:brokerage
 
-2021-03-26 * buy BTC
-    assets:investments:crypto:BTC    1 BTC @ € 1000
+2021-03-31 * buy BTC
+    assets:investments:crypto:BTC    1 BTC @ € $58918.83
     assets:brokerage
     
 2022-04-17 * buy VWCE
-    assets:investments:etf:VWCE    10.0 VWCE @ € 200
+    assets:investments:etf:VWCE    10.0 VWCE @ € 99.41
     assets:brokerage
 
-2022-03-26 * buy AAPL
-    assets:investments:stocks:AAPL    10.0 AAPL @ € 300
+2022-03-31 * buy AAPL
+    assets:investments:stocks:AAPL    10.0 AAPL @ € $171.82
     assets:brokerage
 
-2021-12-26 * sell BTC
-    assets:investments:crypto:BTC    -1 BTC @ € 10000
+2024-11-29 * sell BTC
+    assets:investments:crypto:BTC    -1 BTC @ € 97461.52
     assets:brokerage
 #+end_src
 
 Reports are generated with the command:
 
-#+begin_src sh :dir examples/reports/ :results silent
-python=~/.venv/general/bin/python
-$python -m investory.reports
+#+begin_src sh :dir examples/reports/ :results silent :async yes :session inv2
+python -m investory.reports
 #+end_src
 
 It generates a report for each year, and a summary with current position.
 
 [[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
+
+And for performance.
+We can see that:
+
+| Ticker |   |
