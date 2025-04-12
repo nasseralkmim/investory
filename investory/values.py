@@ -16,6 +16,7 @@ import pandas as pd
 import os
 import yahooquery as yq
 import datetime
+import warnings
 
 
 class Commodity:
@@ -60,18 +61,21 @@ def get_commodity_price(
 
     # get history price for the next 10 days
     # adj_ohlc: adjusts for split and dividends (default is just splits)
-    data = yq.Ticker(commodity.yahoo_ticker).history(
-        start=date, end=date + datetime.timedelta(days=10), adj_ohlc=True
-    )
+    # Suppress FutureWarning from yahooquery regarding pd.Timedelta("S") vs "s"
+    with warnings.catch_warnings():
+        warnings.simplefilter(action='ignore', category=FutureWarning)
+        data = yq.Ticker(commodity.yahoo_ticker).history(
+            start=date, end=date + datetime.timedelta(days=10), adj_ohlc=True
+        )
 
     # extract just the first valid date and close value
     try:
         # get string for datetime object
         date_string = data.index[0][1].strftime("%Y-%m-%d")
-        value = data.close[0]
+        value = data.close.iloc[0]
     except IndexError:
         # if after 10 days there still no data, it is probably not available
-        value = np.NaN
+        value = np.nan
         date_string = ""
 
     return date_string, value
