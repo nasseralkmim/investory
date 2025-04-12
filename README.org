@@ -38,11 +38,16 @@ In 2019-08-30, the price was 82.33.
 In the following month the stock split into three, so the price should be reduced by the same factor.
 The closing price on the next month 2019-09-30 is 28.57. 
 
-#+begin_src sh :dir examples/values/ :results silent
+#+begin_src sh :dir examples/values/
 python=~/.venv/general/bin/python
-pueue add "$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26"
-pueue clean
+$python -m investory.values --commodity IRBR3 --split 30:1,2023-01-25 1:3,2019-09-26
+grep 2023-01-02 IRBR3.ledger
+grep 2023-01-31 IRBR3.ledger
 #+end_src
+
+#+RESULTS:
+: P 2023-01-02 "IRBR3" R$0.870000
+: P 2023-01-31 "IRBR3" R$26.129999
 
 *** Specify currency from commodity
 
