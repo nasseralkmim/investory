@@ -175,9 +175,9 @@ if __name__ == "__main__":
         commodity, default_initial_date=args.begin
     )
 
-    # loop over month end (business day 'BM') from 'begin' date until today
+    # loop over month end (business day 'BME') from 'begin' date until today
     for month_end in pd.date_range(
-        initial_date, datetime.date.today(), freq="BM"
+        initial_date, datetime.date.today(), freq="BME"
     ):
         date, value = get_commodity_price(commodity, month_end)
 
