@@ -7,7 +7,7 @@ dependencies = [
   "yahooquery"]
 
 [tool.pyright]
-venvPath = "/home/nasser/.venv/"
+venvPath = "/home/nasser/.venvs/"
 venv = "general"
 
 [tool.ruff.lint]

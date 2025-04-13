@@ -21,16 +21,19 @@ import warnings
 
 class Commodity:
     """Encapsulate information for a commodity"""
-    def __init__(self, commodity: str, currency: str = "$", yahoo_ticker: str = ""):
+    def __init__(self, commodity: str, currency: str = "$", yahoo_ticker: str = "", output_dir: str = "."):
         self.commodity = commodity
         self.currency: str = currency
+        self.output_dir = output_dir
 
         if yahoo_ticker == "":
             self.yahoo_ticker = commodity
         else:
             self.yahoo_ticker = yahoo_ticker
 
-        self.file: str = f"{self.yahoo_ticker}.ledger"
+        # Ensure the output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.file: str = os.path.join(self.output_dir, f"{self.yahoo_ticker}.ledger")
 
         # adjust the ticker to yahoo to make it easier to loop over multiple commodities
         # if self.yahoo_ticker in ["VWCE", "SXR8"]:
@@ -124,14 +127,14 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Get value of commodity")
-    parser.add_argument(
+    _ = parser.add_argument(
         "--commodity",
         metavar="STRING",
         nargs=1,
         help="Commodity name used in the ledger (Ex. $ for USD).",
         required=True,
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--yahooticker",
         help="Ticker from Yahoo database (Ex. ^VWCE for VWCE)",
         required=False,
@@ -142,7 +145,7 @@ if __name__ == "__main__":
         "Adjust historical prices with split ratio from specified"
         "date (x:y,YYYY-MM-DD)."
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--split",
         help=split_help,
         nargs="+",
@@ -151,29 +154,36 @@ if __name__ == "__main__":
         default=[],
     )
     initial_date_help = ("Date from which to collect data (YYYY-MM-DD).")
-    parser.add_argument(
+    _ = parser.add_argument(
         "--begin",
         help=initial_date_help,
         required=False,
         type=lambda s: datetime.datetime.strptime(s, "%Y-%m-%d").date(),
         default=datetime.date(2018, 1, 1),
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--currency",
         help="Commodity currency ($)",
         required=False,
         type=str,
         default="$",
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--latest-price",
         help="Get price from latest working date.",
         required=False,
         action='store_true',
     )
+    _ = parser.add_argument(
+        "--output-dir",
+        help="Directory to save the output ledger file.",
+        required=False,
+        type=str,
+        default=".",
+    )
     args = parser.parse_args()
 
-    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker)
+    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker, args.output_dir)
 
     initial_date = get_initial_date(
         commodity, default_initial_date=args.begin
@@ -195,7 +205,9 @@ if __name__ == "__main__":
                 )
                 value = adjust_for_split(date, value, split_ratio, split_date)
 
-            with open(f"{commodity.file}", "a") as f:
+            # Ensure the directory exists before writing
+            os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+            with open(commodity.file, "a") as f:
                 f.write(
                     f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
                 )
@@ -218,7 +230,9 @@ if __name__ == "__main__":
             # only save if there is a value
             if not np.isnan(value):
 
-                with open(f"{commodity.file}", "a") as f:
+                # Ensure the directory exists before writing
+                os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+                with open(commodity.file, "a") as f:
                     f.write(
                         f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
                     )

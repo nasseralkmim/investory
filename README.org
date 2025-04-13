@@ -8,15 +8,17 @@ Simple collection of module and function based on Python Pandas to manage an inv
 Create a virtual environment, if it already does not exist[fn:1].
 
 #+begin_src sh
-python -m venv ~/.venv/general
+python3.12 -m venv ~/.venvs/general
 #+end_src
+
+#+RESULTS:
 
 Then using pip from the virtual environment on the source code root directory.
 The flag =-e= is for "editable" so one can edit the source code.
 
-#+begin_src sh :results silent
+#+begin_src sh :results silent :async yes :session install
 cd ~/.local/src/investory/
-~/.venv/general/bin/pip install -e . 
+~/.venvs/general/bin/pip install -e . 
 #+end_src
 
 [fn:1] https://packaging.python.org/en/latest/tutorials/installing-packages/#creating-virtual-environments 
@@ -24,8 +26,8 @@ cd ~/.local/src/investory/
 * How to use it
 :PROPERTIES:
 :header-args: :exports both
-:header-args:sh+: :prologue source ~/.venv/general/bin/activate
-:header-args:python+: :python /home/nasser/.venv/general/bin/python
+:header-args:sh+: :prologue source ~/.venvs/general/bin/activate
+:header-args:python+: :python /home/nasser/.venvs/general/bin/python
 :END:
 ** Values module
 *** Basic functionality
@@ -224,7 +226,7 @@ See tests.
 
 Let's say we bought some shares at this day:
 
-#+begin_src python :python /home/nasser/.venv/general/bin/python
+#+begin_src python :python /home/nasser/.venvs/general/bin/python
 import yahooquery as yq
 import datetime
 appl = yq.Ticker('aapl')
@@ -390,61 +392,68 @@ If we plot the TWR for each month:
 hledger -f data/index.ledger -f data/^spx.ledger \
         roi --inv investments --pnl unrealized \
         --value=then --monthly --infer-market-price \
-        --begin=2023-01-01 --end=2024-01-01
+        --begin=2023-01-01 --end=2024-01-01 > data/spx-twr.org
 hledger -f all.ledger -f data/aapl.ledger \
         roi --inv investments --pnl unrealized \
         --value=then --monthly --infer-market-price \
-        --begin=2023-01-01 --end=2024-01-01
+        --begin=2023-01-01 --end=2024-01-01 > data/portfolio-twr.org
 #+end_src
 
 #+RESULTS:
-#+begin_example
-+-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
-|       ||      Begin |        End || Value (begin) |  Cashflow | Value (end) |       PnL ||     IRR || TWR/period | TWR/year |
-+=======++============+============++===============+===========+=============+===========++=========++============+==========+
-|     1 || 2023-01-01 | 2023-01-31 ||             0 | $ 3853.29 |   $ 4076.60 |  $ 223.31 ||  94.12% ||      5.80% |   94.22% |
-|     2 || 2023-02-01 | 2023-02-28 ||     $ 4076.60 |         0 |   $ 3970.15 | $ -106.45 || -29.17% ||     -2.61% |  -29.16% |
-|     3 || 2023-03-01 | 2023-03-31 ||     $ 3970.15 |         0 |   $ 4109.31 |  $ 139.16 ||  50.03% ||      3.51% |   50.11% |
-|     4 || 2023-04-01 | 2023-04-30 ||     $ 4109.31 |         0 |   $ 4169.48 |   $ 60.17 ||  19.35% ||      1.46% |   19.29% |
-|     5 || 2023-05-01 | 2023-05-31 ||     $ 4169.48 |         0 |   $ 4179.83 |   $ 10.35 ||   2.96% ||      0.25% |    2.98% |
-|     6 || 2023-06-01 | 2023-06-30 ||     $ 4179.83 |         0 |   $ 4450.38 |  $ 270.55 || 114.49% ||      6.47% |  114.42% |
-|     7 || 2023-07-01 | 2023-07-31 ||     $ 4450.38 |         0 |   $ 4588.96 |  $ 138.58 ||  43.48% ||      3.11% |   43.42% |
-|     8 || 2023-08-01 | 2023-08-31 ||     $ 4588.96 |         0 |   $ 4507.66 |  $ -81.30 || -18.98% ||     -1.77% |  -18.96% |
-|     9 || 2023-09-01 | 2023-09-30 ||     $ 4507.66 |         0 |   $ 4288.05 | $ -219.61 || -45.54% ||     -4.87% |  -45.53% |
-|    10 || 2023-10-01 | 2023-10-31 ||     $ 4288.05 |         0 |   $ 4193.80 |  $ -94.25 || -23.02% ||     -2.20% |  -23.04% |
-|    11 || 2023-11-01 | 2023-11-30 ||     $ 4193.80 |         0 |   $ 4567.80 |  $ 374.00 || 182.73% ||      8.92% |  182.80% |
-|    12 || 2023-12-01 | 2023-12-31 ||     $ 4567.80 |         0 |   $ 4769.83 |  $ 202.03 ||  66.46% ||      4.42% |   66.40% |
-+-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
-| Total || 2023-01-01 | 2023-12-31 ||             0 | $ 3853.29 |   $ 4769.83 |  $ 916.54 ||  23.79% ||     23.79% |   23.79% |
-+-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
 
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-|       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
-+=======++============+============++===============+==========+=============+=========++=========++============+==========+
-|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
-|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
-|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
-|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
-|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
-|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
-|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
-|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
-|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
-|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
-|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
-|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+#+header: :var figure="returns.svg"
+#+header: :epilogue fname=f"{figure}";plt.savefig(fname, bbox_inches="tight")
+#+header: :return fname :results file value
+#+begin_src python :dir examples/reports/data
+import matplotlib.pyplot as plt
+import figtex; figtex.style()
+import pandas as pd
 
-#+end_example
+files = {
+    "portfolio-twr.org": dict(label="portfolio", linewidth=2),
+    "spx-twr.org": dict(label="SP500"),
+}
 
+fig, ax = plt.subplots(figsize=(4, 3))
+for file, params in files.items():
+    # read the ascii formatted table
+    # regex: 
+    # \s* matches one or more spaces
+    # \|\|? matches one or two |
+    df: pd.DataFrame = pd.read_csv(file,
+                                   sep=r'\s*\|\|?\s*',
+                                   skipfooter=4, skiprows=1, engine='python', skipinitialspace=True)
+    # remove columns with no data
+    df = df.drop(['Unnamed: 0', 'Unnamed: 1', 'Unnamed: 11'], axis=1)
+    # remove row with no data
+    df = df.drop([0], axis=0)
+    print(df)
 
-[fn:2] https://www.macrotrends.net/2526/sp-500-historical-annual-returns 
+    end_dates: pd.Series = pd.to_datetime(df["End"], format="%Y-%m-%d").rename("end_dates")
+    twr: pd.Series = df["TWR/period"].rename("twr")
+    twr = twr.str.replace('%', '').astype(float)
+    twr = twr / 100 + 1
+
+    # get the cumulative product which aggregates the result for the period
+    ax.plot(end_dates.values, twr.cumprod(), **params)
+
+ax.set(xlabel="Date",
+       ylabel="Accumulated TWR")
+ax.legend()
+#+end_src
+
+#+RESULTS:
+[[file:examples/reports/data/returns.svg]]
 
 *** Simple ledger
 
 Consider a simple ledger involving investments:
+
+#+begin_src ledger :tangle examples/reports/all.ledger
+2023-01-03 * Buy appl
+    assets:investments:stocks  1 aapl @ $125.07
+    assets:cash#+end_src
+#+end_src
 
 #+begin_src ledger :tangle examples/reports/all.ledger
 2021-01-29 * buy VWCE
@@ -474,25 +483,13 @@ Consider a simple ledger involving investments:
 
 Reports are generated with the command:
 
-#+begin_src sh :dir examples/reports/ :results silent :async yes :session inv2
-python -m investory.reports
+#+begin_src sh :dir examples/reports :results silent
+python -m investory.values --commodity aapl --output-dir data --begin 2023-01-01
+python -m investory.reports --ledger all.ledger --data-dir data
 #+end_src
 
 It generates a report for each year, and a summary with current position.
 
 [[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
 
-And for performance.
-We can see that:
 
-#+begin_src sh :dir examples/reports
-hledger -f all.ledger roi --inv investments --pnl unrealized --value=then --infer-market-prices -e 'today'
-#+end_src
-
-#+RESULTS:
-: +---++------------+------------++---------------+-------------+-------------+------------++--------++------------+----------+
-: |   ||      Begin |        End || Value (begin) |    Cashflow | Value (end) |        PnL ||    IRR || TWR/period | TWR/year |
-: +===++============+============++===============+=============+=============+============++========++============+==========+
-: | 1 || 2021-01-29 | 2025-04-11 ||             0 | € -33822.39 |   € 5424.60 | € 39246.99 || 14.07% ||   -116.04% |     NaN% |
-: +---++------------+------------++---------------+-------------+-------------+------------++--------++------------+----------+
-: 

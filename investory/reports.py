@@ -4,13 +4,10 @@ import io
 import os
 import subprocess
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
+from pathlib import Path
 
-import figtex
 import matplotlib.pyplot as plt
 import pandas as pd
-
-figtex.style()
-DATA = "/home/nasser/Sync/documents/admin/finances/data"
 
 
 def get_account_colors(ledger: str) -> dict[str, str]:
@@ -54,13 +51,12 @@ def get_account_colors(ledger: str) -> dict[str, str]:
     return account_colors
 
 
-def generate_asset_distribution_graph(period: int, ledger: str) -> None:
+def generate_asset_distribution_graph(period: int, ledger: str, data_dir: Path) -> None:
     """Generate pie plot for asset distribution."""
+    # Base command
     command: list[str] = [
         "hledger",
         "-f", f"{ledger}",
-        "-f", f"{DATA}/prices/BRLUSD=X.ledger",
-        "-f", f"{DATA}/prices/EURUSD=X.ledger",
         "bal", "acct:^assets:investments",
         "--end", f"{period + 1}",
         "--drop", "2",
@@ -70,6 +66,12 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
         "--infer-market-prices",
         "-O", "csv"
     ]
+
+    # Add price files dynamically
+    price_dir = data_dir / "prices"
+    if price_dir.is_dir():
+        for price_file in price_dir.glob("*.ledger"):
+            command.extend(["-f", str(price_file)])
 
     process = subprocess.Popen(command,
                                stdout=subprocess.PIPE,
@@ -91,7 +93,6 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
 
     account_to_color = get_account_colors(ledger)
     colors = [account_to_color[account] for account in df["account"]]
-    print(colors)
 
     fig, ax = plt.subplots(figsize=(3, 3))
     if df.empty:
@@ -119,14 +120,13 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                 bbox_inches="tight", transparent=True)
 
 
-def generate_asset_evolution_graph(period: int, ledger: str) -> None:
+def generate_asset_evolution_graph(period: int, ledger: str, data_dir: Path) -> None:
     """Generate pie plot for asset distribution."""
 
+    # Base command
     command: list[str] = [
         "hledger",
         "-f", f"{ledger}",
-        "-f", f"{DATA}/prices/BRLUSD=X.ledger",
-        "-f", f"{DATA}/prices/EURUSD=X.ledger",
         "bal", "acct:^assets:investments",
         "--historical", "--monthly",
         "--drop", "2",
@@ -136,6 +136,12 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
         "--infer-market-prices",
         "-O", "csv"
     ]
+
+    # Add price files dynamically
+    price_dir = data_dir / "prices"
+    if price_dir.is_dir():
+        for price_file in price_dir.glob("*.ledger"):
+            command.extend(["-f", str(price_file)])
 
     plot_dir = "reports"
 
@@ -188,11 +194,17 @@ def run_command(command: str) -> str:
     return result.stdout.strip()
 
 
-def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
+def generate_yearly_report(period: int, ledger: str, data_dir: Path, currency: str = "€"):
     os.makedirs(f"reports/{period}", exist_ok=True)
 
-    generate_asset_distribution_graph(period, ledger)
-    generate_asset_evolution_graph(period, ledger)
+    generate_asset_distribution_graph(period, ledger, data_dir)
+    generate_asset_evolution_graph(period, ledger, data_dir)
+
+    # Build price file flags string
+    price_flags = ""
+    price_dir = data_dir / "prices"
+    if price_dir.is_dir():
+        price_flags = " ".join([f"-f {f}" for f in price_dir.glob("*.ledger")])
 
     commands = [
         # Income statement
@@ -208,12 +220,12 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
         # Balance sheet
         f"echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/{period}/bs-{period}.org",
         f"echo -en '* Summary balance sheet last three years\n' >> reports/{period}/bs-{period}.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/{period}/bs-{period}.org",
+        f"hledger -f {ledger} {price_flags} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{currency} --yearly >> reports/{period}/bs-{period}.org",
         f"echo -en '* Balance sheet valued at period ends\n' >> reports/{period}/bs-{period}.org",
-        f"hledger -f {ledger} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> reports/{period}/bs-{period}.org",
+        f"hledger -f {ledger} {price_flags} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> reports/{period}/bs-{period}.org",
         f"echo -en '* Investments converted to cost in R$\n' >> reports/{period}/bs-{period}.org",
         f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total >> reports/{period}/bs1-{period}.org",
-        f"hledger -f {ledger} bal type:AL --historical investments -f {DATA}/prices/EURUSD=X.ledger SD.ledger -f {DATA}/prices/BRLUSD=X.ledger --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange=R$ --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org",
+        f"hledger -f {ledger} {price_flags} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange=R$ --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org",
         f"echo -en 'Investments {period}, converted to cost in R$ \n' >> reports/{period}/bs-{period}.org",
         f"paste reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org | column -s $'\t' -t >> reports/{period}/bs-{period}.org",
         f"rm reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org",
@@ -225,16 +237,21 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
     print(f"Completed report for period: {period}")
 
 
-def generate_summary_report(ledger: str, currency: str = "€"):
-    generate_asset_distribution_graph(0, ledger)
-    generate_asset_evolution_graph(0, ledger)
+def generate_summary_report(ledger: str, data_dir: Path, currency: str = "€"):
+    generate_asset_distribution_graph(0, ledger, data_dir)
+    generate_asset_evolution_graph(0, ledger, data_dir)
+
+    # Build price file flags string
+    price_flags = ""
+    price_dir = data_dir / "prices"
+    if price_dir.is_dir():
+        price_flags = " ".join([f"-f {f}" for f in price_dir.glob("*.ledger")])
+
     commands = [
         # Balance sheet
         "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
         "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
-        "echo -en '\n#+begin_export html\n' >> reports/summary.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly --output-format html >> reports/summary.org",
-        "echo -en '\n#+end_export' >> reports/summary.org",
+        f"hledger -f {ledger} {price_flags} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices -H --value=end,{currency} --yearly  >> reports/summary.org",
     ]
 
     for command in commands:
@@ -244,13 +261,21 @@ def generate_summary_report(ledger: str, currency: str = "€"):
 
 
 def get_ledger_years(ledger_file: str) -> list[int]:
+    print("Getting ledger years")
     stats_output: str = run_command(f"hledger -f {ledger_file} stats")
     for line in stats_output.split('\n'):
         if line.startswith("Transactions span"):
             span = line.split(":")[1].strip()
             start_year, end_year = map(lambda x: int(x.split('-')[0]), span.split(" to "))
+            print("Years in ledges:", list(range(start_year, end_year + 1)))
             return list(range(start_year, end_year + 1))
+    print("No years found in ledger file.")
     return []  # Return an empty list if no span is found
+
+
+def generate_roi_plot():
+    """Generate plot comparing portfolio and benchmark ROI."""
+    pass
 
 
 if __name__ == "__main__":
@@ -260,25 +285,47 @@ if __name__ == "__main__":
         description="Generare report based on this ledger data."
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--ledger", help="Ledger file", required=False, type=str, default="all.ledger"
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--currency", help="Currency", required=False, type=str, default="€"
     )
+    _ = parser.add_argument(
+        "--data-dir", help="Data directory containing price files", required=False, type=Path, default="."
+    )
     args = parser.parse_args()
+
+    print("\n--- Generating ROI Plot ---")
+    generate_roi_plot()
+
+    # # --- Generate Yearly and Summary Reports ---
+    print("\n--- Generating Yearly/Summary Reports ---")
     periods: list[int] = get_ledger_years(args.ledger)
 
-    # Each process (CPU) runs the function for a period simultaneously
-    with ProcessPoolExecutor(max_workers=len(periods)) as executor:
-        futures: list[Future] = [
-            executor.submit(generate_yearly_report, period, args.ledger, args.currency)
-            for period in periods
-        ]
-        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
+    # Use ProcessPoolExecutor for potentially long-running report generation tasks
+    # Limit workers to avoid overwhelming system resources if periods is large
+    max_workers = min(len(periods) + 1, os.cpu_count() or 4)  # +1 for summary report
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures: list[Future] = []
+        # Submit yearly reports
+        for period in periods:
+            futures.append(
+                executor.submit(generate_yearly_report, period, args.ledger, args.data_dir, args.currency)
+            )
+        # Submit summary report
+        futures.append(
+            executor.submit(generate_summary_report, args.ledger, args.data_dir, args.currency)
+        )
 
+        # Wait for all reports to complete
         for future in as_completed(futures):
-            future.result()
+            try:
+                future.result()  # Retrieve result/raise exception if task failed
+            except Exception as e:
+                print(f"An error occurred during report generation: {e}")
+
+    print("\n--- All reports generated ---")
 
 # Local Variables:
 # jinx-local-words: "bs bs-"
