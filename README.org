@@ -25,6 +25,7 @@ cd ~/.local/src/investory/
 :PROPERTIES:
 :header-args: :exports both
 :header-args:sh+: :prologue source ~/.venv/general/bin/activate
+:header-args:python+: :python /home/nasser/.venv/general/bin/python
 :END:
 ** Values module
 *** Basic functionality
@@ -218,6 +219,230 @@ P 2024-10-31 "VWCE" $126.220001
 See tests.
 
 ** Reports
+*** Toy example
+**** Initial investment
+
+Let's say we bought some shares at this day:
+
+#+begin_src python :python /home/nasser/.venv/general/bin/python
+import yahooquery as yq
+import datetime
+appl = yq.Ticker('aapl')
+print(appl.history(start=datetime.date(2023,1,1), end=datetime.date(2023,1,4)).close)
+#+end_src
+
+#+RESULTS:
+: symbol  date      
+: aapl    2023-01-03    125.07
+: Name: close, dtype: float64
+
+We can register in the ledger:
+
+#+begin_src ledger :tangle examples/reports/all.ledger
+2023-01-03 * Buy appl
+    assets:investments:stocks  1 aapl @ $125.07
+    assets:cash
+#+end_src
+
+**** Market fluctuation
+
+#+begin_src python 
+import yahooquery as yq
+import datetime
+appl = yq.Ticker('aapl')
+print(appl.history(start=datetime.date(2023,1,31), end=datetime.date(2023,2,1), adj_ohlc=True).close)
+#+end_src
+
+#+RESULTS:
+: symbol  date      
+: aapl    2023-01-31    142.631622
+: Name: close, dtype: float64
+
+We can record prices over time with:
+
+#+begin_src sh :dir examples/reports/data
+python -m investory.values --commodity aapl --begin 2023-01-01
+head aapl.ledger
+#+end_src
+
+#+RESULTS:
+#+begin_example
+P 2023-01-31 "aapl" $142.631638
+P 2023-02-28 "aapl" $145.938263
+P 2023-03-31 "aapl" $163.253632
+P 2023-04-28 "aapl" $167.985901
+P 2023-05-31 "aapl" $175.723038
+P 2023-06-30 "aapl" $192.299026
+P 2023-07-31 "aapl" $194.757660
+P 2023-08-31 "aapl" $186.503067
+P 2023-09-29 "aapl" $169.964294
+P 2023-10-31 "aapl" $169.527496
+#+end_example
+
+**** Portfolio return
+
+We now want to know the returns of our single-stock portfolio.
+We can do that with =hledger roi= command.
+
+#+begin_src sh :dir examples/reports
+hledger -f all.ledger -f data/aapl.ledger roi --inv investments --pnl unrealized --value=then --monthly --infer-market-price
+#+end_src
+
+#+RESULTS:
+: +---++------------+------------++---------------+----------+-------------+--------++---------++------------+----------+
+: |   ||      Begin |        End || Value (begin) | Cashflow | Value (end) |    PnL ||     IRR || TWR/period | TWR/year |
+: +===++============+============++===============+==========+=============+========++=========++============+==========+
+: | 1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 | $17.56 || 422.64% ||     14.04% |  369.68% |
+: +---++------------+------------++---------------+----------+-------------+--------++---------++------------+----------+
+: 
+
+We can see that in one month, the stock went from 125.07 to 142.63.
+An unrealized profit of 17.56.
+A 14.04% growth in one month (/ (- 142.63 125.07) 125.07), amazing apple.
+
+**** Index comparison
+
+One useful information as investor is to see how our portfolio is performing compared with the whole market.
+With =hledger= we can get the monthly report for the year.
+
+#+begin_src sh :dir examples/reports
+hledger -f all.ledger -f data/aapl.ledger roi --inv investments --pnl unrealized --value=then --monthly --infer-market-price --end=2024-01-01
+#+end_src
+
+#+RESULTS:
+#+begin_example
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+|       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
++=======++============+============++===============+==========+=============+=========++=========++============+==========+
+|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
+|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
+|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
+|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
+|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
+|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
+|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
+|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
+|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
+|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
+|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
+|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+
+#+end_example
+
+We can check the accumulated year return by multiplying the return factor for each period.
+This matches the last table row from =hledger=.
+
+#+begin_src python
+import numpy as np
+monthly_returns_perc = np.array([
+    14.04,
+     2.32,
+    11.86,
+     2.90,
+     4.61,
+     9.43,
+     1.28,
+    -4.24,
+    -8.87,
+    -0.26,
+    11.38,
+     1.36,
+])
+
+accumulated_return = np.prod(monthly_returns_perc / 100 + 1)
+print(f"Performance year: {(accumulated_return - 1)*100:.2f}%")
+#+end_src
+
+#+RESULTS:
+: Performance year: 53.01%
+
+Impressive return in 2023.
+If we look at market return for this year[fn:2] we see that the S&P500 got around 24%.
+So our single-stock portfolio beat the market by a lot on this year.
+
+We can get the same result for any index by the same procedure.
+In yahoo finance, the S&P 500 is registered with the ticker ^SPX.
+
+#+begin_src sh :dir examples/reports/data
+python -m investory.values --commodity ^spx --begin 2023-01-01
+initprice=$(python -c "import yahooquery as yq; import datetime; print('{:.2f}'.format(yq.Ticker('^spx').history(start=datetime.date(2022,12,31), end=datetime.date(2023,1,4), adj_ohlc=True)['open'].iloc[0]))")
+echo -en "2023-01-01 * Buy 1 SPY share\n assets:investments:SPX  1 ^spx @ \$ $initprice\n assets:cash" > index.ledger
+hledger -f index.ledger -f ^spx.ledger \
+        roi --inv investments --pnl unrealized \
+        --value=then --yearly --infer-market-price \
+        --begin=2023-01-01 --end=2024-01-01
+#+end_src
+
+#+RESULTS:
+: +---++------------+------------++---------------+-----------+-------------+----------++--------++------------+----------+
+: |   ||      Begin |        End || Value (begin) |  Cashflow | Value (end) |      PnL ||    IRR || TWR/period | TWR/year |
+: +===++============+============++===============+===========+=============+==========++========++============+==========+
+: | 1 || 2023-01-01 | 2023-12-31 ||             0 | $ 3853.29 |   $ 4769.83 | $ 916.54 || 23.79% ||     23.79% |   23.79% |
+: +---++------------+------------++---------------+-----------+-------------+----------++--------++------------+----------+
+: 
+
+If we plot the TWR for each month:
+
+#+begin_src sh :dir examples/reports
+hledger -f data/index.ledger -f data/^spx.ledger \
+        roi --inv investments --pnl unrealized \
+        --value=then --monthly --infer-market-price \
+        --begin=2023-01-01 --end=2024-01-01
+hledger -f all.ledger -f data/aapl.ledger \
+        roi --inv investments --pnl unrealized \
+        --value=then --monthly --infer-market-price \
+        --begin=2023-01-01 --end=2024-01-01
+#+end_src
+
+#+RESULTS:
+#+begin_example
++-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
+|       ||      Begin |        End || Value (begin) |  Cashflow | Value (end) |       PnL ||     IRR || TWR/period | TWR/year |
++=======++============+============++===============+===========+=============+===========++=========++============+==========+
+|     1 || 2023-01-01 | 2023-01-31 ||             0 | $ 3853.29 |   $ 4076.60 |  $ 223.31 ||  94.12% ||      5.80% |   94.22% |
+|     2 || 2023-02-01 | 2023-02-28 ||     $ 4076.60 |         0 |   $ 3970.15 | $ -106.45 || -29.17% ||     -2.61% |  -29.16% |
+|     3 || 2023-03-01 | 2023-03-31 ||     $ 3970.15 |         0 |   $ 4109.31 |  $ 139.16 ||  50.03% ||      3.51% |   50.11% |
+|     4 || 2023-04-01 | 2023-04-30 ||     $ 4109.31 |         0 |   $ 4169.48 |   $ 60.17 ||  19.35% ||      1.46% |   19.29% |
+|     5 || 2023-05-01 | 2023-05-31 ||     $ 4169.48 |         0 |   $ 4179.83 |   $ 10.35 ||   2.96% ||      0.25% |    2.98% |
+|     6 || 2023-06-01 | 2023-06-30 ||     $ 4179.83 |         0 |   $ 4450.38 |  $ 270.55 || 114.49% ||      6.47% |  114.42% |
+|     7 || 2023-07-01 | 2023-07-31 ||     $ 4450.38 |         0 |   $ 4588.96 |  $ 138.58 ||  43.48% ||      3.11% |   43.42% |
+|     8 || 2023-08-01 | 2023-08-31 ||     $ 4588.96 |         0 |   $ 4507.66 |  $ -81.30 || -18.98% ||     -1.77% |  -18.96% |
+|     9 || 2023-09-01 | 2023-09-30 ||     $ 4507.66 |         0 |   $ 4288.05 | $ -219.61 || -45.54% ||     -4.87% |  -45.53% |
+|    10 || 2023-10-01 | 2023-10-31 ||     $ 4288.05 |         0 |   $ 4193.80 |  $ -94.25 || -23.02% ||     -2.20% |  -23.04% |
+|    11 || 2023-11-01 | 2023-11-30 ||     $ 4193.80 |         0 |   $ 4567.80 |  $ 374.00 || 182.73% ||      8.92% |  182.80% |
+|    12 || 2023-12-01 | 2023-12-31 ||     $ 4567.80 |         0 |   $ 4769.83 |  $ 202.03 ||  66.46% ||      4.42% |   66.40% |
++-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
+| Total || 2023-01-01 | 2023-12-31 ||             0 | $ 3853.29 |   $ 4769.83 |  $ 916.54 ||  23.79% ||     23.79% |   23.79% |
++-------++------------+------------++---------------+-----------+-------------+-----------++---------++------------+----------+
+
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+|       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
++=======++============+============++===============+==========+=============+=========++=========++============+==========+
+|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
+|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
+|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
+|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
+|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
+|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
+|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
+|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
+|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
+|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
+|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
+|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+
+#+end_example
+
+
+[fn:2] https://www.macrotrends.net/2526/sp-500-historical-annual-returns 
+
+*** Simple ledger
 
 Consider a simple ledger involving investments:
 
@@ -231,7 +456,7 @@ Consider a simple ledger involving investments:
     assets:brokerage
 
 2021-03-31 * buy BTC
-    assets:investments:crypto:BTC    1 BTC @ € $58918.83
+    assets:investments:crypto:BTC    1 BTC @ € 58918.83
     assets:brokerage
     
 2022-04-17 * buy VWCE
@@ -239,7 +464,7 @@ Consider a simple ledger involving investments:
     assets:brokerage
 
 2022-03-31 * buy AAPL
-    assets:investments:stocks:AAPL    10.0 AAPL @ € $171.82
+    assets:investments:stocks:AAPL    10.0 AAPL @ €171.82
     assets:brokerage
 
 2024-11-29 * sell BTC
@@ -260,4 +485,14 @@ It generates a report for each year, and a summary with current position.
 And for performance.
 We can see that:
 
-| Ticker |   |
+#+begin_src sh :dir examples/reports
+hledger -f all.ledger roi --inv investments --pnl unrealized --value=then --infer-market-prices -e 'today'
+#+end_src
+
+#+RESULTS:
+: +---++------------+------------++---------------+-------------+-------------+------------++--------++------------+----------+
+: |   ||      Begin |        End || Value (begin) |    Cashflow | Value (end) |        PnL ||    IRR || TWR/period | TWR/year |
+: +===++============+============++===============+=============+=============+============++========++============+==========+
+: | 1 || 2021-01-29 | 2025-04-11 ||             0 | € -33822.39 |   € 5424.60 | € 39246.99 || 14.07% ||   -116.04% |     NaN% |
+: +---++------------+------------++---------------+-------------+-------------+------------++--------++------------+----------+
+: 
