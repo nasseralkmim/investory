@@ -3,6 +3,7 @@
 import io
 import os
 import subprocess
+import sys
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
 import matplotlib.pyplot as plt
@@ -178,14 +179,24 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
                 bbox_inches="tight", transparent=True)
 
 
-def run_command(command: str) -> str:
-    result: subprocess.CompletedProcess = subprocess.run(
-        command, shell=True, check=True, capture_output=True, text=True
-    )
-    return result.stdout.strip()
+def run_command(command: str, verbose: bool = False) -> str:
+    if verbose:
+        print(f"Running command: {command}")
+    try:
+        result: subprocess.CompletedProcess = subprocess.run(
+            command, shell=True, check=True, capture_output=True, text=True
+        )
+        if verbose:
+            print("Command finished successfully")
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed: {command}", file=sys.stderr)
+        print(f"Return code: {e.returncode}", file=sys.stderr)
+        print(f"Error output: {e.stderr.strip()}", file=sys.stderr)
+        raise
 
 
-def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
+def generate_yearly_report(period: int, ledger: str, currency: str = "€", verbose: bool = False):
     os.makedirs(f"reports/{period}", exist_ok=True)
 
     generate_asset_distribution_graph(period, ledger)
@@ -217,12 +228,12 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€"):
     ]
 
     for command in commands:
-        run_command(command)
+        run_command(command, verbose)
 
     print(f"Completed report for period: {period}")
 
 
-def generate_summary_report(ledger: str, currency: str = "€"):
+def generate_summary_report(ledger: str, currency: str = "€", verbose: bool = False):
     generate_asset_distribution_graph(0, ledger)
     generate_asset_evolution_graph(0, ledger)
     commands = [
@@ -235,13 +246,13 @@ def generate_summary_report(ledger: str, currency: str = "€"):
     ]
 
     for command in commands:
-        run_command(command)
+        run_command(command, verbose)
 
     print("Completed summary report")
 
 
-def get_ledger_years(ledger_file: str) -> list[int]:
-    stats_output: str = run_command(f"hledger -f {ledger_file} stats")
+def get_ledger_years(ledger_file: str, verbose: bool = False) -> list[int]:
+    stats_output: str = run_command(f"hledger -f {ledger_file} stats", verbose)
     for line in stats_output.split('\n'):
         if line.startswith("Transactions span"):
             span = line.split(":")[1].strip()
@@ -266,16 +277,18 @@ if __name__ == "__main__":
     _ = parser.add_argument(
         "--data-dir", help="Data directory", required=False, type=str, default="./"
     )
+    _ = parser.add_argument(
+        "--verbose", help="Show detailed command output", action="store_true"
+    )
     args = parser.parse_args()
-    periods: list[int] = get_ledger_years(args.ledger)
-
+    periods: list[int] = get_ledger_years(args.ledger, args.verbose)
     # Each process (CPU) runs the function for a period simultaneously
     with ProcessPoolExecutor(max_workers=len(periods)) as executor:
         futures: list[Future] = [
-            executor.submit(generate_yearly_report, period, args.ledger, args.currency)
+            executor.submit(generate_yearly_report, period, args.ledger, args.currency, args.verbose)
             for period in periods
         ]
-        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency))
+        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency, args.verbose))
 
         for future in as_completed(futures):
             future.result()
