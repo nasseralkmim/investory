@@ -5,11 +5,9 @@ import os
 import subprocess
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
-import figtex
 import matplotlib.pyplot as plt
 import pandas as pd
 
-figtex.style()
 DATA = "/home/nasser/Sync/documents/admin/finances/data"
 
 
