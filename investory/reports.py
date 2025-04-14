@@ -9,10 +9,8 @@ from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 import matplotlib.pyplot as plt
 import pandas as pd
 
-DATA = "/home/nasser/Sync/documents/admin/finances/data"
 
-
-def get_account_colors(ledger: str) -> dict[str, str]:
+def get_account_colors(ledger: str, data_dir: str) -> dict[str, str]:
     """Get a dictionary mapping accounts to colors.
 
     Even if an account has zero balance, it will have a color assigned to it.
@@ -53,13 +51,13 @@ def get_account_colors(ledger: str) -> dict[str, str]:
     return account_colors
 
 
-def generate_asset_distribution_graph(period: int, ledger: str) -> None:
+def generate_asset_distribution_graph(period: int, ledger: str, data_dir: str) -> None:
     """Generate pie plot for asset distribution."""
     command: list[str] = [
         "hledger",
         "-f", f"{ledger}",
-        "-f", f"{DATA}/prices/BRLUSD=X.ledger",
-        "-f", f"{DATA}/prices/EURUSD=X.ledger",
+        "-f", f"{data_dir}/BRLUSD=X.ledger",
+        "-f", f"{data_dir}/EURUSD=X.ledger",
         "bal", "acct:^assets:investments",
         "--end", f"{period + 1}",
         "--drop", "2",
@@ -88,7 +86,7 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
     negative_df = df[df["balance"] < 0]
     df = df[df["balance"] >= 0]
 
-    account_to_color = get_account_colors(ledger)
+    account_to_color = get_account_colors(ledger, data_dir)
     colors = [account_to_color[account] for account in df["account"]]
 
     fig, ax = plt.subplots(figsize=(3, 3))
@@ -117,14 +115,14 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
                 bbox_inches="tight", transparent=True)
 
 
-def generate_asset_evolution_graph(period: int, ledger: str) -> None:
+def generate_asset_evolution_graph(period: int, ledger: str, data_dir: str) -> None:
     """Generate pie plot for asset distribution."""
 
     command: list[str] = [
         "hledger",
         "-f", f"{ledger}",
-        "-f", f"{DATA}/prices/BRLUSD=X.ledger",
-        "-f", f"{DATA}/prices/EURUSD=X.ledger",
+        "-f", f"{data_dir}/BRLUSD=X.ledger",
+        "-f", f"{data_dir}/EURUSD=X.ledger",
         "bal", "acct:^assets:investments",
         "--historical", "--monthly",
         "--drop", "2",
@@ -159,7 +157,7 @@ def generate_asset_evolution_graph(period: int, ledger: str) -> None:
     df.columns = pd.to_datetime(df.columns, format="%Y-%m")
     df = df.transpose()
 
-    account_to_color = get_account_colors(ledger)
+    account_to_color = get_account_colors(ledger, data_dir)
 
     # Avoid problems with negative balances in the plot.
     # Replace negative values with np.NaN
@@ -196,11 +194,11 @@ def run_command(command: str, verbose: bool = False) -> str:
         raise
 
 
-def generate_yearly_report(period: int, ledger: str, currency: str = "€", verbose: bool = False):
+def generate_yearly_report(period: int, ledger: str, data_dir: str, currency: str = "€", verbose: bool = False):
     os.makedirs(f"reports/{period}", exist_ok=True)
 
-    generate_asset_distribution_graph(period, ledger)
-    generate_asset_evolution_graph(period, ledger)
+    generate_asset_distribution_graph(period, ledger, data_dir)
+    generate_asset_evolution_graph(period, ledger, data_dir)
 
     commands = [
         # Income statement
@@ -216,12 +214,12 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€", verb
         # Balance sheet
         f"echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/{period}/bs-{period}.org",
         f"echo -en '* Summary balance sheet last three years\n' >> reports/{period}/bs-{period}.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly >> reports/{period}/bs-{period}.org",
+        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{currency} -f {data_dir}/EURUSD=X.ledger -f {data_dir}/BRLUSD=X.ledger --yearly >> reports/{period}/bs-{period}.org",
         f"echo -en '* Balance sheet valued at period ends\n' >> reports/{period}/bs-{period}.org",
         f"hledger -f {ledger} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> reports/{period}/bs-{period}.org",
         f"echo -en '* Investments converted to cost in R$\n' >> reports/{period}/bs-{period}.org",
         f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total >> reports/{period}/bs1-{period}.org",
-        f"hledger -f {ledger} bal type:AL --historical investments -f {DATA}/prices/EURUSD=X.ledger SD.ledger -f {DATA}/prices/BRLUSD=X.ledger --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange=R$ --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org",
+        f"hledger -f {ledger} bal type:AL --historical investments -f {data_dir}/EURUSD=X.ledger SD.ledger -f {data_dir}/BRLUSD=X.ledger --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange=R$ --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org",
         f"echo -en 'Investments {period}, converted to cost in R$ \n' >> reports/{period}/bs-{period}.org",
         f"paste reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org | column -s $'\t' -t >> reports/{period}/bs-{period}.org",
         f"rm reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org",
@@ -233,15 +231,15 @@ def generate_yearly_report(period: int, ledger: str, currency: str = "€", verb
     print(f"Completed report for period: {period}")
 
 
-def generate_summary_report(ledger: str, currency: str = "€", verbose: bool = False):
-    generate_asset_distribution_graph(0, ledger)
-    generate_asset_evolution_graph(0, ledger)
+def generate_summary_report(ledger: str, data_dir: str, currency: str = "€", verbose: bool = False):
+    generate_asset_distribution_graph(0, ledger, data_dir)
+    generate_asset_evolution_graph(0, ledger, data_dir)
     commands = [
         # Balance sheet
         "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
         "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
         "echo -en '\n#+begin_export html\n' >> reports/summary.org",
-        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {DATA}/prices/EURUSD=X.ledger -f {DATA}/prices/BRLUSD=X.ledger --yearly --output-format html >> reports/summary.org",
+        f"hledger -f {ledger} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{currency} -f {data_dir}/EURUSD=X.ledger -f {data_dir}/BRLUSD=X.ledger --yearly --output-format html >> reports/summary.org",
         "echo -en '\n#+end_export' >> reports/summary.org",
     ]
 
@@ -285,10 +283,10 @@ if __name__ == "__main__":
     # Each process (CPU) runs the function for a period simultaneously
     with ProcessPoolExecutor(max_workers=len(periods)) as executor:
         futures: list[Future] = [
-            executor.submit(generate_yearly_report, period, args.ledger, args.currency, args.verbose)
+            executor.submit(generate_yearly_report, period, args.ledger, args.data_dir, args.currency, args.verbose)
             for period in periods
         ]
-        futures.append(executor.submit(generate_summary_report, args.ledger, args.currency, args.verbose))
+        futures.append(executor.submit(generate_summary_report, args.ledger, args.data_dir, args.currency, args.verbose))
 
         for future in as_completed(futures):
             future.result()
