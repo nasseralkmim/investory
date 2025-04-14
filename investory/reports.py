@@ -89,7 +89,6 @@ def generate_asset_distribution_graph(period: int, ledger: str) -> None:
 
     account_to_color = get_account_colors(ledger)
     colors = [account_to_color[account] for account in df["account"]]
-    print(colors)
 
     fig, ax = plt.subplots(figsize=(3, 3))
     if df.empty:
