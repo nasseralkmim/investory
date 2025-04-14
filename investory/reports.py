@@ -258,11 +258,14 @@ if __name__ == "__main__":
         description="Generare report based on this ledger data."
     )
 
-    parser.add_argument(
+    _ = parser.add_argument(
         "--ledger", help="Ledger file", required=False, type=str, default="all.ledger"
     )
-    parser.add_argument(
+    _ = parser.add_argument(
         "--currency", help="Currency", required=False, type=str, default="€"
+    )
+    _ = parser.add_argument(
+        "--data-dir", help="Data directory", required=False, type=str, default="./"
     )
     args = parser.parse_args()
     periods: list[int] = get_ledger_years(args.ledger)
