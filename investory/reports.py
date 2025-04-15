@@ -62,7 +62,7 @@ def get_account_colors(ledger: str, data_dir: str) -> dict[str, str]:
 
 
 # Add this new function
-def get_ledger_currencies(ledger_file: str, verbose: bool = False) -> set[str]:
+def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     """Detect currency symbols/codes used in the ledger."""
     currencies = set()
     try:
@@ -85,7 +85,7 @@ def get_ledger_currencies(ledger_file: str, verbose: bool = False) -> set[str]:
         # For now, let's return potentially detected ones or empty
         pass # Returning potentially partially filled set
 
-    if not currencies:
+    if verbose >= 1 and not currencies:
          print(f"Warning: No currencies detected in {ledger_file}. Reporting might be incomplete.", file=sys.stderr)
 
     return currencies
@@ -97,7 +97,7 @@ def find_conversion_files(
     other_currency_symbols: set[str],
     data_dir: str,
     currency_map: dict[str, str],
-    verbose: bool = False,
+    verbose: int = 0,
 ) -> list[str]:
     """Find ledger files for converting other currencies to the target currency."""
     conversion_args = []
@@ -122,16 +122,16 @@ def find_conversion_files(
             conversion_args.append("-f")
             conversion_args.append(path1)
             found = True
-            if verbose:
+            if verbose >= 1:
                 print(f"Found conversion file: {path1}")
         elif os.path.exists(path2):
             conversion_args.append("-f")
             conversion_args.append(path2)
             found = True
-            if verbose:
+            if verbose >= 1:
                 print(f"Found conversion file: {path2}")
 
-        if not found and verbose:
+        if not found and verbose >= 1:
             print(
                 f"Warning: No conversion file found for {target_code}<->{other_code} "
                 f"(looked for {file1} or {file2} in {data_dir})",
@@ -145,15 +145,14 @@ def generate_asset_distribution_graph(
     period: int,
     ledger: str,
     data_dir: str,
-    target_currency: str, # Add target_currency
-    conversion_args: list[str], # Add conversion_args
+    target_currency: str,
+    conversion_args: list[str],
 ) -> None:
     """Generate pie plot for asset distribution."""
     command: list[str] = [
         "hledger",
         "-f", f"{ledger}",
-        # Remove hardcoded BRLUSD/EURUSD files
-        *conversion_args, # Add dynamic conversion files
+        *conversion_args,
         "bal", "acct:^assets:investments",
         "--end", f"{period + 1}",
         "--drop", "2",
@@ -212,12 +211,12 @@ def generate_asset_distribution_graph(
                 bbox_inches="tight", transparent=True)
 
 
-def generate_asset_evolution_graph(
+def generate_asset_evolution_graph( # noqa: PLR0913
     period: int,
     ledger: str,
     data_dir: str,
-    target_currency: str, # Add target_currency
-    conversion_args: list[str], # Add conversion_args
+    target_currency: str,
+    conversion_args: list[str],
 ) -> None:
     """Generate area plot for asset evolution."""
 
@@ -281,14 +280,27 @@ def generate_asset_evolution_graph(
                 bbox_inches="tight", transparent=True)
 
 
-def run_command(command: str, verbose: bool = False) -> str:
-    if verbose:
+def run_command(command: str, verbose: int = 0) -> str:
+    """Execute a shell command and return its stdout.
+
+    Args:
+        command: The command string to execute.
+        verbose: Verbosity level (0=silent, 1=normal, 2=high).
+                 Level 2 prints the command being run and success message.
+
+    Returns:
+        The standard output of the command.
+
+    Raises:
+        subprocess.CalledProcessError: If the command fails.
+    """
+    if verbose >= 2:
         print(f"Running command: {command}")
     try:
         result: subprocess.CompletedProcess = subprocess.run(
-            command, shell=True, check=True, capture_output=True, text=True
+            command, shell=True, check=True, capture_output=True, text=True # noqa: S602
         )
-        if verbose:
+        if verbose >= 2:
             print("Command finished successfully")
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
@@ -302,9 +314,9 @@ def generate_yearly_report(
     period: int,
     ledger: str,
     data_dir: str,
-    target_currency: str, # Change 'currency' to 'target_currency'
-    conversion_args: list[str], # Add conversion_args
-    verbose: bool = False
+    target_currency: str,
+    conversion_args: list[str],
+    verbose: int = 0
 ):
     os.makedirs(f"reports/{period}", exist_ok=True)
 
@@ -337,31 +349,32 @@ def generate_yearly_report(
 
         # Cost basis section (needs careful review - converting to R$ was hardcoded)
         # This section seems specifically designed for R$. Let's make the target currency dynamic here too.
-        f"echo -en '* Investments converted to cost in {target_currency}\n' >> reports/{period}/bs-{period}.org", # Use target_currency
+        f"echo -en '* Investments converted to cost in {target_currency}\n' >> reports/{period}/bs-{period}.org",
         # This first part gets historical cost in original currency, no conversion needed yet
         f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total >> reports/{period}/bs1-{period}.org",
         # This second part applies conversion. Add {conv_args_str}, use {target_currency}, remove hardcoded -f
         f"hledger -f {ledger} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org", # Use target_currency
-        f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> reports/{period}/bs-{period}.org", # Use target_currency
+        f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> reports/{period}/bs-{period}.org",
         f"paste reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org | column -s $'\t' -t >> reports/{period}/bs-{period}.org",
         f"rm reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org",
     ]
 
     for command in commands:
-        run_command(command, verbose)
+        run_command(command, verbose=verbose)
 
-    print(f"Completed report for period: {period}")
+    if verbose >= 1:
+        print(f"Completed report for period: {period}")
 
 
-def generate_summary_report(
+def generate_summary_report(  # noqa: PLR0913
     ledger: str,
     data_dir: str,
-    target_currency: str, # Change 'currency' to 'target_currency'
-    conversion_args: list[str], # Add conversion_args
-    verbose: bool = False
+    target_currency: str,
+    conversion_args: list[str],
+    verbose: int = 0
 ):
     # Pass new arguments to graph functions
-    generate_asset_distribution_graph(0, ledger, data_dir, target_currency, conversion_args)
+    generate_asset_distribution_graph(0, ledger, data_dir, target_currency, conversion_args) # noqa: PLR0913
     generate_asset_evolution_graph(0, ledger, data_dir, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
@@ -377,13 +390,14 @@ def generate_summary_report(
     ]
 
     for command in commands:
-        run_command(command, verbose)
+        run_command(command, verbose=verbose)
 
-    print("Completed summary report")
+    if verbose >= 1:
+        print("Completed summary report")
 
 
-def get_ledger_years(ledger_file: str, verbose: bool = False) -> list[int]:
-    stats_output: str = run_command(f"hledger -f {ledger_file} stats", verbose)
+def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
+    stats_output: str = run_command(f"hledger -f {ledger_file} stats", verbose=verbose)
     for line in stats_output.split('\n'):
         if line.startswith("Transactions span"):
             span = line.split(":")[1].strip()
@@ -396,54 +410,55 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Generate reports based on hledger data." # Updated description slightly
+        description="Generate reports based on hledger data."  # Updated description slightly
     )
 
     _ = parser.add_argument(
         "--ledger", help="Main ledger file", required=False, type=str, default="all.ledger"
     )
     _ = parser.add_argument(
-        "--currency", help="Target currency symbol for valuation (e.g., €, $, R$)", required=False, type=str, default="€" # Updated help, default is €
+        "--currency", help="Target currency symbol for valuation (e.g., €, $, R$)", required=False, type=str, default="€"  # Updated help, default is €
     )
     _ = parser.add_argument(
-        "--data-dir", help="Directory containing ledger and currency conversion files", required=False, type=str, default="./" # Updated help
+        "--data-dir", help="Directory containing ledger and currency conversion files", required=False, type=str, default="./"
     )
     _ = parser.add_argument(
-        "--verbose", help="Show detailed command output and warnings", action="store_true" # Updated help
+        "-v", "--verbose",
+        help="Set output verbosity level (0=silent, 1=normal, 2=detailed).",
+        type=int, default=0, choices=[0, 1, 2]
     )
     args = parser.parse_args()
 
-    # --- New logic ---
     # Detect all currencies in the main ledger
-    all_currencies = get_ledger_currencies(args.ledger, args.verbose)
-    if args.verbose:
+    all_currencies = get_ledger_currencies(args.ledger, verbose=args.verbose)
+    if args.verbose >= 1:
         print(f"Detected currencies: {all_currencies}")
 
     # Identify currencies that need conversion to the target currency
     target_symbol = args.currency
     other_currencies = all_currencies - {target_symbol}
-    if args.verbose:
+    if args.verbose >= 1:
         print(f"Target currency: {target_symbol}")
         print(f"Other currencies requiring conversion checks: {other_currencies}")
 
     # Find the necessary conversion files
     conversion_args = find_conversion_files(
-        target_symbol, other_currencies, args.data_dir, CURRENCY_SYMBOL_TO_CODE, args.verbose
+        target_symbol, other_currencies, args.data_dir, CURRENCY_SYMBOL_TO_CODE, verbose=args.verbose
     )
-    if args.verbose:
+    if args.verbose >= 1:
         print(f"Conversion file arguments: {conversion_args}")
     # --- End new logic ---
 
-    periods: list[int] = get_ledger_years(args.ledger, args.verbose)
+    periods: list[int] = get_ledger_years(args.ledger, verbose=args.verbose)
     # Each process (CPU) runs the function for a period simultaneously
     with ProcessPoolExecutor(max_workers=len(periods) + 1) as executor: # +1 for summary report
         futures: list[Future] = [
             # Pass target_currency and conversion_args to yearly report
-            executor.submit(generate_yearly_report, period, args.ledger, args.data_dir, target_symbol, conversion_args, args.verbose)
+            executor.submit(generate_yearly_report, period, args.ledger, args.data_dir, target_symbol, conversion_args, verbose=args.verbose)
             for period in periods
         ]
         # Pass target_currency and conversion_args to summary report
-        futures.append(executor.submit(generate_summary_report, args.ledger, args.data_dir, target_symbol, conversion_args, args.verbose))
+        futures.append(executor.submit(generate_summary_report, args.ledger, args.data_dir, target_symbol, conversion_args, verbose=args.verbose))
 
         for future in as_completed(futures):
             try:
