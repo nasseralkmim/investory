@@ -174,13 +174,13 @@ def generate_asset_distribution_graph(
     # Expected data frame structure
     # column 1: account names
     # column 2: account balances
-    df: pd.DataFrame = pd.read_csv(csv_data)  # type: ignore
+    df: pd.DataFrame = pd.read_csv(csv_data)  # pyright ignore[reportUnknownMemberType]
     # Update the currency symbol replacement
     df = df.replace(re.escape(target_currency) + r"\s*", "", regex=True)  # Use target_currency and escape it
-    df["balance"] = pd.to_numeric(df["balance"])  # type: ignore
+    df["balance"] = pd.to_numeric(df["balance"])  # pyright ignore[reportUnknownMemberType]
 
     # Avoid problems with negative values
-    negative_filter: pd.Series = df["balance"] < 0
+    negative_filter: pd.Series = df["balance"] < 0  # pyright: ignore[reportMissingTypeArgument]
     negative_df: pd.DataFrame = df[negative_filter].copy()  # pyright ignore[reportAssignmentType]
     df_positive: pd.DataFrame = df[~negative_filter]  # type: ignore
 
@@ -442,7 +442,7 @@ if __name__ == "__main__":
     )
     args: argparse.Namespace = parser.parse_args()
     # Provide types for args attributes used later
-    ledger_file: str = args.ledger
+    ledger_file: str = args.ledger  # pyright ignore[reportAny]
     target_symbol: str = args.currency
     data_dir: str = args.data_dir
     verbose_level: int = args.verbose
@@ -464,7 +464,6 @@ if __name__ == "__main__":
     )
     if verbose_level >= 1:
         print(f"Conversion file arguments: {conversion_args}")
-    # --- End new logic ---
 
     periods: list[int] = get_ledger_years(ledger_file, verbose=verbose_level)
     # Each process (CPU) runs the function for a period simultaneously
