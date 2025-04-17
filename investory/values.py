@@ -21,7 +21,7 @@ import warnings
 
 class Commodity:
     """Encapsulate information for a commodity"""
-    def __init__(self, commodity: str, currency: str = "$", yahoo_ticker: str = "", output_dir: str = "."):
+    def __init__(self, commodity: str, currency: str = "$", yahoo_ticker: str = "", output_dir: str = "./"):
         self.commodity = commodity
         self.currency: str = currency
         self.output_dir = output_dir
@@ -34,6 +34,9 @@ class Commodity:
         # Ensure the output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
         self.file: str = os.path.join(self.output_dir, f"{self.yahoo_ticker}.ledger")
+
+        print(f"Output directory: {self.output_dir}")
+        print(f"Ledger file path: {self.file}")
 
         # adjust the ticker to yahoo to make it easier to loop over multiple commodities
         # if self.yahoo_ticker in ["VWCE", "SXR8"]:
@@ -57,33 +60,6 @@ def adjust_for_split(
     return value
 
 
-def get_commodity_price(
-    commodity: Commodity, date: datetime.date
-) -> tuple[str, float]:
-    """Getting the commodity price on specific date."""
-
-    # get history price for the next 10 days
-    # adj_ohlc: adjusts for split and dividends (default is just splits)
-    # Suppress FutureWarning from yahooquery regarding pd.Timedelta("S") vs "s"
-    with warnings.catch_warnings():
-        warnings.simplefilter(action='ignore', category=FutureWarning)
-        data = yq.Ticker(commodity.yahoo_ticker).history(
-            start=date, end=date + datetime.timedelta(days=10), adj_ohlc=True
-        )
-
-    # extract just the first valid date and close value
-    try:
-        # get string for datetime object
-        date_string = data.index[0][1].strftime("%Y-%m-%d")
-        value = data.close.iloc[0]
-    except IndexError:
-        # if after 10 days there still no data, it is probably not available
-        value = np.nan
-        date_string = ""
-
-    return date_string, value
-
-
 def get_last_date_recorded(commodity: Commodity) -> datetime.date:
     """Get the last date recorded in the file."""
     with open(commodity.file, "r") as f:
@@ -97,12 +73,20 @@ def get_initial_date(
     commodity: Commodity, default_initial_date: datetime.date
 ) -> datetime.date:
     """Get the date from which to obtain the commodity values."""
-    if os.path.exists(f"{commodity.file}"):
-        last_date_recorded = get_last_date_recorded(commodity)
-        # add a month to this date, which will be the starting point
-        return last_date_recorded + datetime.timedelta(weeks=4)
+    if os.path.exists(commodity.file):
+        try:
+            last_date_recorded = get_last_date_recorded(commodity)
+            # Start fetching from the day *after* the last recorded date
+            # to avoid fetching data we already have and potentially re-processing the last date.
+            print(f"Last date recorded in {commodity.file}: {last_date_recorded}")
+            return last_date_recorded + datetime.timedelta(days=1)
+        except (IndexError, ValueError, FileNotFoundError):
+             # Handle empty file, file not found, or malformed last line
+             print(f"Could not read last date from {commodity.file}, using default initial date.")
+             return default_initial_date
     else:
         # if file does not exist start from this date
+        print(f"File {commodity.file} not found, using default initial date: {default_initial_date}")
         return default_initial_date
 
 
@@ -183,56 +167,144 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker, args.output_dir)
+    # Resolve the output directory to an absolute path
+    absolute_output_dir = os.path.abspath(args.output_dir)
+
+    commodity = Commodity(args.commodity[0], args.currency, args.yahooticker, absolute_output_dir)
 
     initial_date = get_initial_date(
         commodity, default_initial_date=args.begin
     )
 
-    # loop over month end (business day 'BME') from 'begin' date until today
-    for month_end in pd.date_range(
-        initial_date, datetime.date.today(), freq="BME"
-    ):
-        date, value = get_commodity_price(commodity, month_end)
+    # --- Fetch historical data once ---
+    history_data = pd.DataFrame() # Initialize empty DataFrame
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter(action='ignore', category=FutureWarning)
+            ticker = yq.Ticker(commodity.yahoo_ticker)
+            # Fetch data slightly beyond today to ensure latest is included if needed later
+            end_fetch_date = datetime.date.today() + datetime.timedelta(days=1)
+            history_data = ticker.history(start=initial_date, end=end_fetch_date, adj_ohlc=True)
 
-        # only save if there is a value
-        if not np.isnan(value):
+        # Ensure the index is just the date part for easier lookup
+        if isinstance(history_data.index, pd.MultiIndex):
+            history_data.index = history_data.index.get_level_values('date')
+        # Ensure index is sorted DateTimeIndex
+        history_data = history_data.sort_index()
+        print(f"Fetched history_data shape: {history_data.shape}")
+        # print(f"Fetched history_data head:\n{history_data.head()}") # Uncomment for more detail
 
-            # Adjust for split
-            for splits_ratio_and_date in args.split:
-                split_ratio, split_date = get_split_ratio_and_date(
-                    splits_ratio_and_date
-                )
-                value = adjust_for_split(date, value, split_ratio, split_date)
+    except Exception as e:
+        print(f"Could not fetch historical data for {commodity.commodity}: {e}")
+        history_data = pd.DataFrame() # Ensure it's an empty DataFrame on error
+        # Depending on requirements, you might exit here or continue if possible
 
-            # Ensure the directory exists before writing
-            os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+    # --- Process historical data for month ends ---
+    if not history_data.empty:
+        # Keep track of dates already present in the output file
+        processed_dates = set()
+        if os.path.exists(commodity.file):
+            try:
+                with open(commodity.file, "r") as f:
+                    for line in f:
+                        if line.startswith('P '):
+                            try:
+                                date_str = line.split()[1]
+                                processed_dates.add(datetime.datetime.strptime(date_str, "%Y-%m-%d").date())
+                            except (IndexError, ValueError):
+                                continue # Ignore malformed lines
+            except FileNotFoundError:
+                pass # File doesn't exist yet, nothing is processed
+
+        # Generate target month-end dates within the fetched range
+        target_dates = pd.date_range(initial_date, datetime.date.today(), freq="BME")
+
+        # Find the closest available historical data points for each target date
+        # Use reindex with forward fill to find the last known price ON or BEFORE the target date
+        # Ensure target_dates timezone matches history_data.index timezone (or lack thereof)
+        if isinstance(history_data.index, pd.DatetimeIndex):
+            if history_data.index.tz is None:
+                target_dates = target_dates.tz_localize(None)
+            else:
+                # Or localize target_dates to the history_data timezone if needed (less common for daily data)
+                 target_dates = target_dates.tz_localize(history_data.index.tz)
+        # If history_data.index is not a DatetimeIndex, assume target_dates (which is DatetimeIndex)
+        # doesn't need localization relative to it. This might need adjustment if non-datetime indices occur.
+
+        relevant_data = history_data.reindex(target_dates, method='ffill').dropna()
+
+        print(f"Target month-end dates range: {target_dates.min()} to {target_dates.max()}")
+        print(f"Relevant data shape before filtering processed dates: {relevant_data.shape}")
+        # Filter out dates already processed
+        relevant_data = relevant_data[~relevant_data.index.map(lambda d: d.date()).isin(processed_dates)]
+        print(f"Relevant data shape AFTER filtering processed dates: {relevant_data.shape}")
+        # print(f"Relevant data head:\n{relevant_data.head()}") # Uncomment for more detail
+
+        # Ensure the output directory exists before writing loop
+        os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+        if not relevant_data.empty:
+            print(f"Writing {len(relevant_data)} new month-end entries to {commodity.file}...")
             with open(commodity.file, "a") as f:
-                f.write(
-                    f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
-                )
+                for date_ts, row in relevant_data.iterrows():
+                    date = date_ts.date() # Convert timestamp to date
+                    value = row['close'] # Assuming 'close' is the column name
 
-    # TODO: maybe there is a better design to integrate this feature.
-    # Get only the price from the latest working date
-    if args.latest_price:
+                    # Adjust for split
+                    date_str = date.strftime("%Y-%m-%d")
+                    adjusted_value = value # Start with the fetched value
+                    for splits_ratio_and_date in args.split:
+                        split_ratio, split_date = get_split_ratio_and_date(splits_ratio_and_date)
+                        # Adjust if the historical data point's date is before the split date
+                        adjusted_value = adjust_for_split(date_str, adjusted_value, split_ratio, split_date)
 
-        # Check if this price was already registered.
-        last_date_recorded = get_last_date_recorded(commodity)
+                    # Write to file
+                    try:
+                        f.write(
+                            f'P {date_str} "{commodity.commodity}" {commodity.currency}{adjusted_value:f}\n'
+                        )
+                    except Exception as write_error:
+                        print(f"Error writing entry for date {date_str}: {write_error}")
+                        # Optionally break or continue depending on desired behavior on error
+                        # break
+        else:
+            print("No new month-end data to write.")
 
-        from pandas.tseries.offsets import BDay
-        last_business_date = datetime.date.today() - BDay(1)
-        if (
-            last_date_recorded.day is not last_business_date.day
-            and last_date_recorded.day is not datetime.date.today().day
-        ):
-            date, value = get_commodity_price(commodity, datetime.date.today())
+    # --- Get only the price from the latest working date if requested ---
+    if args.latest_price and not history_data.empty:
+        # Find the latest date potentially written to the file (by the loop above or previous runs)
+        last_date_recorded = None
+        if os.path.exists(commodity.file):
+             try:
+                 last_date_recorded = get_last_date_recorded(commodity)
+             except (FileNotFoundError, IndexError, ValueError): # Handle empty/malformed file
+                 pass # No valid date recorded yet
 
-            # only save if there is a value
-            if not np.isnan(value):
+        # Get the last row from the fetched historical data
+        latest_entry = history_data.iloc[-1]
+        latest_date = latest_entry.name.date() # Assumes index is datetime
+        latest_value = latest_entry['close']
 
-                # Ensure the directory exists before writing
-                os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+        print(f"Latest fetched date: {latest_date}, Last recorded date in file: {last_date_recorded}")
+        # Write only if this date hasn't been recorded yet
+        if last_date_recorded is None or latest_date > last_date_recorded:
+            print(f"Writing latest price for {latest_date} to {commodity.file}...")
+            date_str = latest_date.strftime("%Y-%m-%d")
+            adjusted_value = latest_value
+            # Adjust for split if necessary
+            for splits_ratio_and_date in args.split:
+                 split_ratio, split_date = get_split_ratio_and_date(splits_ratio_and_date)
+                 adjusted_value = adjust_for_split(date_str, adjusted_value, split_ratio, split_date)
+
+            # Ensure the directory exists before writing (might be redundant, but safe)
+            os.makedirs(os.path.dirname(commodity.file), exist_ok=True)
+            try:
                 with open(commodity.file, "a") as f:
                     f.write(
-                        f'P {date} "{commodity.commodity}" {commodity.currency}{value:f}\n'
+                        f'P {date_str} "{commodity.commodity}" {commodity.currency}{adjusted_value:f}\n'
                     )
+            except Exception as write_error:
+                print(f"Error writing latest price entry for date {date_str}: {write_error}")
+        else:
+            print("Latest price date is not newer than the last recorded date. Skipping write.")
+    elif args.latest_price and history_data.empty:
+         print(f"Cannot get latest price for {commodity.commodity} as historical data fetch failed.")
