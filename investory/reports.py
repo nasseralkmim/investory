@@ -212,7 +212,14 @@ def generate_asset_distribution_graph(
                 _ = ax_pie.text(0.5, 0.5, f"Negative values:\n{account}: {balance}", # pyright: ignore[reportUnknownVariableType]
                                 ha='center', va='center', fontsize=12)
 
-    fig.savefig("reports/asset-distribution.svg", # pyright: ignore[reportUnknownVariableType]
+    # Determine output directory based on period
+    plot_dir = "reports"
+    if period != 0:
+        plot_dir = f"reports/{period}"
+        # Ensure the directory exists (it should be created by generate_yearly_report)
+        # os.makedirs(plot_dir, exist_ok=True) # Optional: Add if needed, but yearly report already creates it.
+
+    fig.savefig(f"{plot_dir}/asset-distribution.svg",  # pyright: ignore[reportUnknownVariableType]
                 bbox_inches="tight", transparent=True)
 
 
