@@ -391,7 +391,7 @@ def generate_summary_report(  # noqa: PLR0913
         "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
         "echo -en '\n#+begin_export html\n' >> reports/summary.org",
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format html >> reports/summary.org",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> reports/summary.org",
         "echo -en '\n#+end_export' >> reports/summary.org",
     ]
 
