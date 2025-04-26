@@ -1,16 +1,19 @@
 """Generate reports with hledger."""
+
 # ruff: noqa: E501
 import io
 import os
 import re
 import subprocess
 import sys
+import datetime  # Add datetime import
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
 import matplotlib.axes
 import matplotlib.figure
 import matplotlib.pyplot as plt
 import pandas as pd  # pyright: ignore [reportMissingTypeStubs]
+import yahooquery as yq  # Add yahooquery import
 
 
 CURRENCY_SYMBOL_TO_CODE = {
@@ -55,9 +58,7 @@ def get_account_colors(ledger: str) -> dict[str, str]:
     # Create a dictionary mapping accounts to colors
     account_colors: dict[str, str] = {}
     for i, account in enumerate(accounts):
-        account_colors[account] = colors[
-            i % len(colors)
-        ]
+        account_colors[account] = colors[i % len(colors)]
 
     return account_colors
 
@@ -67,7 +68,9 @@ def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     currencies: set[str] = set()
     try:
         # Get all commodities declared or used
-        commodities_output = run_command(f"hledger -f {ledger_file} commodities", verbose)
+        commodities_output = run_command(
+            f"hledger -f {ledger_file} commodities", verbose
+        )
         # Regex to find common currency symbols or 3-letter uppercase codes
         # Adjust regex as needed for the currencies you expect
         currency_pattern = re.compile(r"^(?:[$€£¥]|R\$|[A-Z]{3})$")
@@ -86,7 +89,10 @@ def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
         pass  # Returning potentially partially filled set
 
     if verbose >= 1 and not currencies:
-        print(f"Warning: No currencies detected in {ledger_file}. Reporting might be incomplete.", file=sys.stderr)
+        print(
+            f"Warning: No currencies detected in {ledger_file}. Reporting might be incomplete.",
+            file=sys.stderr,
+        )
 
     return currencies
 
@@ -107,7 +113,9 @@ def find_conversion_files(
             continue
 
         other_code = currency_map.get(other_symbol, other_symbol)
-        if target_code == other_code:  # Skip if codes map to the same (e.g. '$' and 'USD')
+        if (
+            target_code == other_code
+        ):  # Skip if codes map to the same (e.g. '$' and 'USD')
             continue
 
         # Construct possible filenames
@@ -149,22 +157,27 @@ def generate_asset_distribution_graph(
     """Generate pie plot for asset distribution."""
     command: list[str] = [
         "hledger",
-        "-f", f"{ledger}",
+        "-f",
+        f"{ledger}",
         *conversion_args,
-        "bal", "acct:^assets:investments",
-        "--end", f"{period + 1}",
-        "--drop", "2",
-        "--depth", "3",
+        "bal",
+        "acct:^assets:investments",
+        "--end",
+        f"{period + 1}",
+        "--drop",
+        "2",
+        "--depth",
+        "3",
         f"--value=end,{target_currency}",  # Use target_currency
         "--no-total",
         "--infer-market-prices",
-        "-O", "csv"
+        "-O",
+        "csv",
     ]
 
-    process = subprocess.Popen(command,
-                               stdout=subprocess.PIPE,
-                               shell=False,
-                               universal_newlines=True)
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+    )
     output, _ = process.communicate()
     csv_data = io.StringIO(output)
 
@@ -173,16 +186,26 @@ def generate_asset_distribution_graph(
     # column 2: account balances
     df: pd.DataFrame = pd.read_csv(csv_data)  # pyright ignore[reportUnknownMemberType]
     # Update the currency symbol replacement
-    df = df.replace(re.escape(target_currency) + r"\s*", "", regex=True)  # Use target_currency and escape it
-    df["balance"] = pd.to_numeric(df["balance"])  # pyright ignore[reportUnknownMemberType]
+    df = df.replace(
+        re.escape(target_currency) + r"\s*", "", regex=True
+    )  # Use target_currency and escape it
+    df["balance"] = pd.to_numeric(
+        df["balance"]
+    )  # pyright ignore[reportUnknownMemberType]
 
     # Avoid problems with negative values
-    negative_filter: pd.Series = df["balance"] < 0  # pyright: ignore[reportMissingTypeArgument]
-    negative_df: pd.DataFrame = df[negative_filter].copy()  # pyright ignore[reportAssignmentType]
+    negative_filter: pd.Series = (
+        df["balance"] < 0
+    )  # pyright: ignore[reportMissingTypeArgument]
+    negative_df: pd.DataFrame = df[
+        negative_filter
+    ].copy()  # pyright ignore[reportAssignmentType]
     df_positive: pd.DataFrame = df[~negative_filter]  # type: ignore
 
     account_to_color = get_account_colors(ledger)
-    colors: list[str] = [account_to_color[account] for account in df_positive["account"]]  # pyright: ignore[reportUnknownVariableType]
+    colors: list[str] = [
+        account_to_color[account] for account in df_positive["account"]
+    ]  # pyright: ignore[reportUnknownVariableType]
 
     fig: matplotlib.figure.Figure
     ax: matplotlib.axes.Axes
@@ -191,23 +214,46 @@ def generate_asset_distribution_graph(
     if df_positive.empty:
         _ = ax.set_xlim(0, 1)
         _ = ax.set_ylim(0, 1)
-        _ = ax.text(0.5, 0.5, 'No data available',  # pyright: ignore[reportUnknownMemberType]
-                    ha='center', va='center', fontsize=12)
-        _ = ax.axis('off')  # Hide axes
+        _ = ax.text(
+            0.5,
+            0.5,
+            "No data available",  # pyright: ignore[reportUnknownMemberType]
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
+        _ = ax.axis("off")  # Hide axes
     else:
-        ax_pie: matplotlib.axes.Axes = df_positive.plot.pie(y="balance", labels=df_positive["account"],  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-                                                            colors=colors,
-                                                            ylabel="",
-                                                            ax=ax)
-        _ = plt.title('Asset Distribution')  # pyright: ignore[reportUnknownVariableType]
+        ax_pie: matplotlib.axes.Axes = df_positive.plot.pie(
+            y="balance",
+            labels=df_positive[
+                "account"
+            ],  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+            colors=colors,
+            ylabel="",
+            ax=ax,
+        )
+        _ = plt.title(
+            "Asset Distribution"
+        )  # pyright: ignore[reportUnknownVariableType]
 
         # display negative values as information text
         if not negative_df.empty:
             for i in range(len(negative_df)):
-                account: str = negative_df.iloc[i]["account"] # pyright: ignore[reportUnknownVariableType]
-                balance: float = negative_df.iloc[i]["balance"] # pyright: ignore[reportUnknownVariableType]
-                _ = ax_pie.text(0.5, 0.5, f"Negative values:\n{account}: {balance}", # pyright: ignore[reportUnknownVariableType]
-                                ha='center', va='center', fontsize=12)
+                account: str = negative_df.iloc[i][
+                    "account"
+                ]  # pyright: ignore[reportUnknownVariableType]
+                balance: float = negative_df.iloc[i][
+                    "balance"
+                ]  # pyright: ignore[reportUnknownVariableType]
+                _ = ax_pie.text(
+                    0.5,
+                    0.5,
+                    f"Negative values:\n{account}: {balance}",  # pyright: ignore[reportUnknownVariableType]
+                    ha="center",
+                    va="center",
+                    fontsize=12,
+                )
 
     # Determine output directory based on period
     plot_dir = "reports"
@@ -216,8 +262,11 @@ def generate_asset_distribution_graph(
         # Ensure the directory exists (it should be created by generate_yearly_report)
         # os.makedirs(plot_dir, exist_ok=True) # Optional: Add if needed, but yearly report already creates it.
 
-    fig.savefig(f"{plot_dir}/asset-distribution.svg",  # pyright: ignore[reportUnknownVariableType]
-                bbox_inches="tight", transparent=True)
+    fig.savefig(
+        f"{plot_dir}/asset-distribution.svg",  # pyright: ignore[reportUnknownVariableType]
+        bbox_inches="tight",
+        transparent=True,
+    )
 
 
 def generate_asset_evolution_graph(  # noqa: PLR0913
@@ -230,17 +279,23 @@ def generate_asset_evolution_graph(  # noqa: PLR0913
 
     command: list[str] = [
         "hledger",
-        "-f", f"{ledger}",
+        "-f",
+        f"{ledger}",
         # Remove hardcoded BRLUSD/EURUSD files
         *conversion_args,  # Add dynamic conversion files
-        "bal", "acct:^assets:investments",
-        "--historical", "--monthly",
-        "--drop", "2",
-        "--depth", "3",
+        "bal",
+        "acct:^assets:investments",
+        "--historical",
+        "--monthly",
+        "--drop",
+        "2",
+        "--depth",
+        "3",
         f"--value=end,{target_currency}",  # Use target_currency
         "--no-total",
         "--infer-market-prices",
-        "-O", "csv"
+        "-O",
+        "csv",
     ]
 
     plot_dir = "reports"
@@ -249,10 +304,9 @@ def generate_asset_evolution_graph(  # noqa: PLR0913
         command.extend(["--end", f"{period + 1}"])
         plot_dir = f"reports/{period}"
 
-    process = subprocess.Popen(command,
-                               stdout=subprocess.PIPE,
-                               shell=False,
-                               universal_newlines=True)
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+    )
     output, _ = process.communicate()
     csv_data = io.StringIO(output)
 
@@ -260,13 +314,21 @@ def generate_asset_evolution_graph(  # noqa: PLR0913
     # index: date
     # columns id: account names
     # columns values: account balances
-    df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)  # pyright: ignore[reportUnknownMemberType]
+    df_evo: pd.DataFrame = pd.read_csv(
+        csv_data, index_col=0
+    )  # pyright: ignore[reportUnknownMemberType]
     # Update the currency symbol replacement
     # The replace operation can return Series or None, causing type issues. Ignore for now.
-    df_evo = df_evo.replace(re.escape(target_currency) + r"\s*", "", regex=True)  # Use target_currency and escape it
-    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAssignmentType]
+    df_evo = df_evo.replace(
+        re.escape(target_currency) + r"\s*", "", regex=True
+    )  # Use target_currency and escape it
+    df_evo = df_evo[df_evo.columns].apply(
+        pd.to_numeric
+    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAssignmentType]
     # convert columns name to datetime
-    df_evo.columns = pd.to_datetime(df_evo.columns, format="%Y-%m")  # pyright: ignore[reportUnknownMemberType]
+    df_evo.columns = pd.to_datetime(
+        df_evo.columns, format="%Y-%m"
+    )  # pyright: ignore[reportUnknownMemberType]
     df_evo = df_evo.transpose()  # pyright: ignore[reportUnknownMemberType]
 
     account_to_color = get_account_colors(ledger)
@@ -281,23 +343,35 @@ def generate_asset_evolution_graph(  # noqa: PLR0913
     if df_evo.empty:
         _ = ax.set_xlim(0, 1)
         _ = ax.set_ylim(0, 1)
-        _ = ax.text(0.5, 0.5, 'No data available',  # pyright: ignore[reportUnknownMemberType]
-                    ha='center', va='center', fontsize=12)
-        _ = ax.axis('off')  # Hide axes
+        _ = ax.text(
+            0.5,
+            0.5,
+            "No data available",  # pyright: ignore[reportUnknownMemberType]
+            ha="center",
+            va="center",
+            fontsize=12,
+        )
+        _ = ax.axis("off")  # Hide axes
     else:
-        ax = df_evo.plot.area(ax=ax, color=account_to_color)  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-        _ = plt.title('Asset Evolution')  # pyright: ignore[reportUnknownMemberType]
-    fig.savefig(f"{plot_dir}/asset-evolution.svg",  # pyright: ignore[reportUnknownMemberType]
-                bbox_inches="tight", transparent=True)
+        ax = df_evo.plot.area(
+            ax=ax, color=account_to_color
+        )  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
+        _ = plt.title("Asset Evolution")  # pyright: ignore[reportUnknownMemberType]
+    fig.savefig(
+        f"{plot_dir}/asset-evolution.svg",  # pyright: ignore[reportUnknownMemberType]
+        bbox_inches="tight",
+        transparent=True,
+    )
 
 
-def run_command(command: str, verbose: int = 0) -> str:
+def run_command(command: str, stdin_data: str | None = None, verbose: int = 0) -> str:
     """Execute a shell command and return its stdout.
 
     Args:
         command: The command string to execute.
         verbose: Verbosity level (0=silent, 1=normal, 2=high).
                  Level 2 prints the command being run and success message.
+        stdin_data: Optional string to pass as standard input to the command.
 
     Returns:
         The standard output of the command.
@@ -307,18 +381,45 @@ def run_command(command: str, verbose: int = 0) -> str:
     """
     if verbose >= 2:
         print(f"Running command: {command}")
+        if stdin_data:
+            print(
+                f"  with stdin: {stdin_data[:100]}..."
+            )  # Print first 100 chars of stdin
+
     try:
-        result: subprocess.CompletedProcess[str] = subprocess.run(
-            command, shell=True, check=True, capture_output=True, text=True  # noqa: S602
+        process = subprocess.Popen(
+            command,
+            shell=True,  # noqa: S602
+            stdin=subprocess.PIPE if stdin_data else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",  # Explicitly set encoding
         )
-        if verbose >= 2:
+        stdout_data, stderr_data = process.communicate(input=stdin_data)
+
+        if process.returncode != 0:
+            print(f"Command failed: {command}", file=sys.stderr)
+            print(f"Return code: {process.returncode}", file=sys.stderr)
+            print(f"Error output: {stderr_data.strip()}", file=sys.stderr)
+            # Raise an error consistent with subprocess.run(check=True)
+            raise subprocess.CalledProcessError(
+                process.returncode, command, output=stdout_data, stderr=stderr_data
+            )
+
             print("Command finished successfully")
-        return result.stdout.strip()
+        return stdout_data.strip()
+    # Keep the original exception handling for CalledProcessError,
+    # although communicate() failure might raise other exceptions too.
     except subprocess.CalledProcessError as e:
-        stderr_output = e.stderr.strip() if e.stderr else "N/A"  # pyright: ignore[reportAny]
-        print(f"Command failed: {command}", file=sys.stderr)
-        print(f"Return code: {e.returncode}", file=sys.stderr)
-        print(f"Error output: {stderr_output}", file=sys.stderr)
+        # Error details are already printed above
+        raise
+    except Exception as e:
+        # Catch other potential errors during Popen or communicate
+        print(
+            f"An unexpected error occurred running command: {command}", file=sys.stderr
+        )
+        print(f"Error: {e}", file=sys.stderr)
         raise
 
 
@@ -327,7 +428,7 @@ def generate_yearly_report(  # noqa: PLR0913
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
-    verbose: int = 0
+    verbose: int = 0,
 ):
     os.makedirs(f"reports/{period}", exist_ok=True)
 
@@ -336,7 +437,7 @@ def generate_yearly_report(  # noqa: PLR0913
     generate_asset_evolution_graph(period, ledger, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
-    conv_args_str = ' '.join(conversion_args)
+    conv_args_str = " ".join(conversion_args)
 
     commands = [
         # Income statement
@@ -357,7 +458,6 @@ def generate_yearly_report(  # noqa: PLR0913
         f"echo -en '* Balance sheet valued at period ends\n' >> reports/{period}/bs-{period}.org",
         # Add {conv_args_str}, use {target_currency} (implicitly via --value=end without currency?) - Check hledger docs if needed, but usually defaults work if prices exist. Let's keep it simple for now.
         f"hledger -f {ledger} {conv_args_str} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> reports/{period}/bs-{period}.org",
-
         # Cost basis section (needs careful review - converting to R$ was hardcoded)
         # This section seems specifically designed for R$. Let's make the target currency dynamic here too.
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> reports/{period}/bs-{period}.org",
@@ -378,17 +478,14 @@ def generate_yearly_report(  # noqa: PLR0913
 
 
 def generate_summary_report(  # noqa: PLR0913
-    ledger: str,
-    target_currency: str,
-    conversion_args: list[str],
-    verbose: int = 0
+    ledger: str, target_currency: str, conversion_args: list[str], verbose: int = 0
 ):
     # Pass new arguments to graph functions (removed data_dir)
     generate_asset_distribution_graph(0, ledger, target_currency, conversion_args)
     generate_asset_evolution_graph(0, ledger, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
-    conv_args_str = ' '.join(conversion_args)
+    conv_args_str = " ".join(conversion_args)
     commands = [
         # Balance sheet
         "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
@@ -406,12 +503,234 @@ def generate_summary_report(  # noqa: PLR0913
         print("Completed summary report")
 
 
+def parse_hledger_roi_csv(csv_data: str, verbose: int = 0) -> pd.DataFrame | None:
+    """Parse CSV output from 'hledger roi --output-format csv'."""
+    try:
+        df = pd.read_csv(io.StringIO(csv_data))
+        # Select and rename relevant columns (adjust if hledger output changes)
+        df = df[["End", "TWR/period"]]
+        df = df.rename(columns={"End": "date", "TWR/period": "twr_percent"})
+        # Convert date column to datetime objects
+        df["date"] = pd.to_datetime(df["date"])
+        # Convert TWR percentage string to numeric factor (e.g., '5.5%' -> 1.055)
+        df["twr_factor"] = df["twr_percent"].str.rstrip("%").astype(float) / 100 + 1
+        df = df.drop(columns=["twr_percent"])
+        # Sort by date just in case
+        df = df.sort_values(by="date").reset_index(drop=True)
+        return df
+    except (pd.errors.EmptyDataError, KeyError, ValueError) as e:
+        if verbose >= 1:
+            print(f"Error parsing hledger roi CSV data: {e}", file=sys.stderr)
+            print("CSV Data received:", file=sys.stderr)
+            print(csv_data[:500] + "...", file=sys.stderr)  # Print first 500 chars
+        return None
+
+
+def generate_roi_report(  # noqa: PLR0913 Too many arguments
+    ledger_file: str,
+    data_dir: str,
+    target_currency: str,
+    conversion_args: list[str],
+    output_dir: str,
+    benchmark_ticker: str = "^spx",
+    verbose: int = 0,
+):
+    """Generate ROI comparison report against a benchmark."""
+    if verbose >= 1:
+        print(f"Generating ROI report comparing with benchmark '{benchmark_ticker}'...")
+
+    roi_output_dir = os.path.join(output_dir, "roi")
+    os.makedirs(roi_output_dir, exist_ok=True)
+
+    # --- Common hledger roi arguments ---
+    # NOTE: Using 'investments' and 'unrealized' based on README example.
+    # These might need to be configurable in the future.
+    base_roi_args = [
+        "roi",
+        "--investment",
+        "investments",
+        "--profit-loss",
+        "unrealized",  # Use 'unrealized' as PnL account based on README
+        "--value=then",
+        "--monthly",
+        "--infer-market-price",
+        "--output-format",
+        "csv",
+    ]
+    conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
+
+    # --- 1. Portfolio ROI ---
+    portfolio_roi_csv: str | None = None
+    df_portfolio: pd.DataFrame | None = None
+    portfolio_csv_file = os.path.join(roi_output_dir, "portfolio-roi.csv")
+    try:
+        # Include data_dir files implicitly via hledger finding them relative to ledger_file?
+        # Or explicitly add them? Let's try explicit for clarity.
+        # Find all .ledger files in data_dir (commodity prices)
+        data_files_args = []
+        if os.path.isdir(data_dir):
+            data_files_args = [
+                f"-f {os.path.join(data_dir, f)}"
+                for f in os.listdir(data_dir)
+                if f.endswith(".ledger")
+            ]
+        else:
+            if verbose >= 1:
+                print(
+                    f"Warning: Data directory '{data_dir}' not found. Commodity prices might be missing.",
+                    file=sys.stderr,
+                )
+
+        portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)}"
+        portfolio_roi_csv = run_command(portfolio_command, verbose=verbose)
+        with open(portfolio_csv_file, "w") as f:
+            f.write(portfolio_roi_csv)
+        if verbose >= 1:
+            print(f"Portfolio ROI data saved to {portfolio_csv_file}")
+        df_portfolio = parse_hledger_roi_csv(portfolio_roi_csv, verbose)
+    except (subprocess.CalledProcessError, IOError) as e:
+        if verbose >= 1:
+            print(f"Error getting or saving portfolio ROI: {e}", file=sys.stderr)
+
+    # --- 2. Benchmark ROI ---
+    benchmark_roi_csv: str | None = None
+    df_benchmark: pd.DataFrame | None = None
+    benchmark_csv_file = os.path.join(roi_output_dir, f"{benchmark_ticker}-roi.csv")
+    benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
+
+    if not os.path.exists(benchmark_data_file):
+        print(
+            f"Error: Benchmark data file not found: {benchmark_data_file}",
+            file=sys.stderr,
+        )
+        print(
+            f"Please generate it first using: python -m investory.values --commodity {benchmark_ticker} --output-dir {data_dir}",
+            file=sys.stderr,
+        )
+    else:
+        try:
+            # Get ledger start date to fetch initial benchmark price
+            first_trans_date_str = run_command(
+                f"hledger -f {ledger_file} stats | grep 'First transaction' | cut -d ':' -f 2 | cut -d ',' -f 1 | xargs",
+                verbose,
+            )
+            first_trans_date = datetime.datetime.strptime(
+                first_trans_date_str, "%Y-%m-%d"
+            ).date()
+            # Fetch benchmark price around the start date
+            ticker = yq.Ticker(benchmark_ticker)
+            # Fetch slightly before to ensure we get a price if start date was holiday/weekend
+            hist = ticker.history(
+                start=first_trans_date - datetime.timedelta(days=5),
+                end=first_trans_date + datetime.timedelta(days=1),
+            )
+            if hist.empty:
+                raise ValueError(
+                    f"Could not fetch initial price for benchmark {benchmark_ticker} around {first_trans_date}"
+                )
+            # Use 'open' price on the first available day in the fetched history
+            initial_price = hist["open"].iloc[0]
+            initial_price_date = hist.index.get_level_values("date")[
+                0
+            ]  # Get the actual date of the price
+
+            # Create temporary ledger for benchmark initial purchase
+            # Use target_currency for the price. Assumes benchmark is priced in target currency.
+            # This might be incorrect if benchmark (e.g. ^STOXX) is EUR but target is USD.
+            # For simplicity, assume benchmark price file and target currency align for now.
+            temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {target_currency}{initial_price:.2f}\n    assets:cash\n"
+
+            # Run hledger roi for benchmark using temp ledger via stdin and benchmark data file
+            benchmark_command = (
+                f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)}"
+            )
+            benchmark_roi_csv = run_command(
+                benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
+            )
+
+            with open(benchmark_csv_file, "w") as f:
+                f.write(benchmark_roi_csv)
+            if verbose >= 1:
+                print(
+                    f"Benchmark ({benchmark_ticker}) ROI data saved to {benchmark_csv_file}"
+                )
+            df_benchmark = parse_hledger_roi_csv(benchmark_roi_csv, verbose)
+
+        except (
+            subprocess.CalledProcessError,
+            IOError,
+            ValueError,
+            yq.exceptions.YahooQueryError,
+        ) as e:
+            if verbose >= 1:
+                print(
+                    f"Error getting or saving benchmark ROI for {benchmark_ticker}: {e}",
+                    file=sys.stderr,
+                )
+
+    # --- 3. Plotting ---
+    plot_file = os.path.join(roi_output_dir, "roi-comparison.svg")
+    if df_portfolio is not None or df_benchmark is not None:
+        fig, ax = plt.subplots(
+            figsize=(8, 4)
+        )  # pyright: ignore[reportUnknownMemberType]
+
+        if df_portfolio is not None:
+            portfolio_cum_twr = df_portfolio["twr_factor"].cumprod()
+            ax.plot(
+                df_portfolio["date"], portfolio_cum_twr, label="Portfolio", linewidth=2
+            )
+
+        if df_benchmark is not None:
+            benchmark_cum_twr = df_benchmark["twr_factor"].cumprod()
+            ax.plot(
+                df_benchmark["date"],
+                benchmark_cum_twr,
+                label=f"Benchmark ({benchmark_ticker})",
+            )
+
+        ax.set(
+            xlabel="Date",
+            ylabel="Cumulative TWR (Factor)",
+            title="Portfolio vs Benchmark Performance",
+        )
+        ax.legend()
+        ax.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.xticks(rotation=45)  # pyright: ignore[reportUnknownMemberType]
+        fig.tight_layout()  # pyright: ignore[reportUnknownMemberType]
+        fig.savefig(
+            plot_file, bbox_inches="tight", transparent=True
+        )  # pyright: ignore[reportUnknownMemberType]
+        if verbose >= 1:
+            print(f"ROI comparison plot saved to {plot_file}")
+    elif verbose >= 1:
+        print("Skipping ROI plot generation as no valid data was parsed.")
+
+    if verbose >= 1:
+        print("Finished ROI report generation.")
+
+
 def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
-    stats_output: str = run_command(f"hledger -f {ledger_file} stats", verbose=verbose)
-    for line in stats_output.split('\n'):
-        if line.startswith("Transactions span"):
+    """Extract the years covered by transactions in the ledger."""
+    try:
+        stats_output: str = run_command(
+            f"hledger -f {ledger_file} stats", verbose=verbose
+        )
+    except subprocess.CalledProcessError:
+        if verbose >= 1:
+            print(
+                f"Warning: Could not run 'hledger stats' on {ledger_file}. Cannot determine years.",
+                file=sys.stderr,
+            )
+        return []  # Return empty list if stats fails
+
+    for line in stats_output.split("\n"):
+        # Handle different hledger versions/outputs for date span
+        if line.startswith("Transactions span") or line.startswith("Date range"):
             span = line.split(":")[1].strip()
-            start_year, end_year = map(lambda x: int(x.split('-')[0]), span.split(" to "))
+            start_year, end_year = map(
+                lambda x: int(x.split("-")[0]), span.split(" to ")
+            )
             return list(range(start_year, end_year + 1))
     return []  # Return an empty list if no span is found
 
@@ -424,25 +743,66 @@ if __name__ == "__main__":
     )
 
     _ = parser.add_argument(
-        "--ledger", help="Main ledger file", required=False, type=str, default="all.ledger"
+        "--ledger",
+        help="Main ledger file",
+        required=False,
+        type=str,
+        default="all.ledger",
     )
     _ = parser.add_argument(
-        "--currency", help="Target currency symbol for valuation (e.g., €, $, R$)", required=False, type=str, default="€"  # Updated help, default is €
+        "--currency",
+        help="Target currency symbol for valuation (e.g., €, $, R$)",
+        required=False,
+        type=str,
+        default="€",  # Updated help, default is €
     )
     _ = parser.add_argument(
-        "--data-dir", help="Directory containing ledger and currency conversion files", required=False, type=str, default="./"
+        "--data-dir",
+        help="Directory containing commodity price (.ledger) files",
+        required=False,
+        type=str,
+        default="./data",  # Default to ./data
     )
     _ = parser.add_argument(
-        "-v", "--verbose",
+        "--output-dir",
+        help="Directory to save generated reports",
+        required=False,
+        type=str,
+        default="./reports",  # Default to ./reports
+    )
+    _ = parser.add_argument(
+        "--roi-report",
+        help="Generate ROI comparison report",
+        required=False,
+        action="store_true",
+    )
+    _ = parser.add_argument(
+        "--benchmark-ticker",
+        help="Yahoo Finance ticker for ROI benchmark",
+        required=False,
+        type=str,
+        default="^spx",  # Default to S&P 500
+    )
+    _ = parser.add_argument(
+        "-v",
+        "--verbose",
         help="Set output verbosity level (0=silent, 1=normal, 2=detailed).",
-        type=int, default=0, choices=[0, 1, 2]
+        type=int,
+        default=0,
+        choices=[0, 1, 2],
     )
     args: argparse.Namespace = parser.parse_args()
     # Provide types for args attributes used later
     ledger_file: str = args.ledger  # pyright ignore[reportAny]
-    target_symbol: str = args.currency
-    data_dir: str = args.data_dir
-    verbose_level: int = args.verbose
+    target_symbol: str = args.currency  # pyright ignore[reportAny]
+    data_dir: str = args.data_dir  # pyright ignore[reportAny]
+    output_dir: str = args.output_dir  # pyright ignore[reportAny]
+    generate_roi: bool = args.roi_report  # pyright ignore[reportAny]
+    benchmark_ticker: str = args.benchmark_ticker  # pyright ignore[reportAny]
+    verbose_level: int = args.verbose  # pyright ignore[reportAny]
+
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
 
     # Detect all currencies in the main ledger
     all_currencies = get_ledger_currencies(ledger_file, verbose=verbose_level)
@@ -457,28 +817,69 @@ if __name__ == "__main__":
 
     # Find the necessary conversion files
     conversion_args = find_conversion_files(
-        target_symbol, other_currencies, data_dir, CURRENCY_SYMBOL_TO_CODE, verbose=verbose_level
+        target_symbol,
+        other_currencies,
+        data_dir,
+        CURRENCY_SYMBOL_TO_CODE,
+        verbose=verbose_level,
     )
-    if verbose_level >= 1:
-        print(f"Conversion file arguments: {conversion_args}")
+    print(f"Conversion file arguments: {conversion_args}")
 
+    # --- Generate Reports ---
+    tasks_to_run: list[tuple] = []
+
+    # 1. Yearly and Summary Balance/Income Reports (always run)
     periods: list[int] = get_ledger_years(ledger_file, verbose=verbose_level)
-    # Each process (CPU) runs the function for a period simultaneously
-    with ProcessPoolExecutor(max_workers=len(periods) + 1) as executor:  # +1 for summary report
-        futures: list[Future[None]] = [
-            # Pass target_currency and conversion_args to yearly report (removed data_dir)
-            executor.submit(generate_yearly_report, period, ledger_file, target_symbol, conversion_args, verbose=verbose_level)
-            for period in periods
-        ]
-        # Pass target_currency and conversion_args to summary report (removed data_dir)
-        futures.append(executor.submit(generate_summary_report, ledger_file, target_symbol, conversion_args, verbose=verbose_level))
+    for period in periods:
+        tasks_to_run.append(
+            (
+                generate_yearly_report,
+                period,
+                ledger_file,
+                target_symbol,
+                conversion_args,
+                verbose_level,
+            )
+        )
+    tasks_to_run.append(
+        (
+            generate_summary_report,
+            ledger_file,
+            target_symbol,
+            conversion_args,
+            verbose_level,
+        )
+    )
 
-        future: Future[None]
+    # 2. ROI Report (optional)
+    if generate_roi:
+        # ROI report needs output_dir and benchmark_ticker
+        tasks_to_run.append(
+            (
+                generate_roi_report,
+                ledger_file,
+                data_dir,
+                target_symbol,
+                conversion_args,
+                output_dir,
+                benchmark_ticker,
+                verbose_level,
+            )
+        )
+
+    # Execute tasks in parallel
+    # Adjust max_workers if needed, +1 might not be necessary if ROI runs alongside others
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        futures: list[Future[None]] = [
+            executor.submit(task_func, *task_args)  # Unpack args for each function call
+            for task_func, *task_args in tasks_to_run  # Unpack function and its args
+        ]
+
         for future in as_completed(futures):
             try:
                 future.result()  # Check for exceptions raised in subprocesses
             except Exception as exc:
-                print(f'Report generation task raised an exception: {exc}')
+                print(f"Report generation task raised an exception: {exc}")
 
 # Local Variables:
 # jinx-local-words: "bs bs-"
