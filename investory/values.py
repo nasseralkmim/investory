@@ -34,7 +34,7 @@ class Commodity:
         self.commodity = commodity
         self.currency: str = currency
         self.output_dir = output_dir
-        self.verbose = 0 # Default verbosity
+        self.verbose = 0  # Default verbosity
 
         if yahoo_ticker == "":
             self.yahoo_ticker = commodity
@@ -67,7 +67,9 @@ def adjust_for_split(
     return value
 
 
-def get_last_date_recorded(commodity: Commodity, verbose: int = 0) -> datetime.date | None:
+def get_last_date_recorded(
+    commodity: Commodity, verbose: int = 0
+) -> datetime.date | None:
     """Get the last date recorded in the file. Returns None if not found or error."""
     try:
         with open(commodity.file, "r") as f:
@@ -79,13 +81,17 @@ def get_last_date_recorded(commodity: Commodity, verbose: int = 0) -> datetime.d
             last_line: str = lines[-1]
             # Attempt to parse the date from the last line
             parts = last_line.split()
-            if len(parts) > 1 and parts[0] == 'P':
+            if len(parts) > 1 and parts[0] == "P":
                 last_date_str: str = parts[1]
-                last_date: datetime.date = datetime.datetime.strptime(last_date_str, "%Y-%m-%d").date()
+                last_date: datetime.date = datetime.datetime.strptime(
+                    last_date_str, "%Y-%m-%d"
+                ).date()
                 return last_date
             else:
                 if verbose >= 1:
-                    print(f"Could not parse date from last line in {commodity.file}: {last_line}")
+                    print(
+                        f"Could not parse date from last line in {commodity.file}: {last_line}"
+                    )
                 return None
     except FileNotFoundError:
         if verbose >= 1:
@@ -114,9 +120,13 @@ def get_initial_date(
         # Use default if file doesn't exist or last date couldn't be determined
         if verbose >= 1:
             if os.path.exists(commodity.file):
-                 print(f"Could not read last date from {commodity.file}, using default initial date: {default_initial_date}")
+                print(
+                    f"Could not read last date from {commodity.file}, using default initial date: {default_initial_date}"
+                )
             else:
-                 print(f"File {commodity.file} not found, using default initial date: {default_initial_date}")
+                print(
+                    f"File {commodity.file} not found, using default initial date: {default_initial_date}"
+                )
         return default_initial_date
 
 
@@ -196,20 +206,26 @@ if __name__ == "__main__":
         default=".",
     )
     _ = parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         help="Set output verbosity level (0=silent, 1=normal, 2=detailed).",
-        type=int, default=0, choices=[0, 1, 2]
+        type=int,
+        default=0,
+        choices=[0, 1, 2],
     )
     args = parser.parse_args()
-    verbose_level: int = args.verbose # pyright ignore[reportAny]
+    verbose_level: int = args.verbose  # pyright ignore[reportAny]
 
     # Resolve the output directory to an absolute path
     absolute_output_dir = os.path.abspath(args.output_dir)
 
     commodity = Commodity(
-        args.commodity[0], args.currency, args.yahooticker, absolute_output_dir # pyright ignore[reportAny]
+        args.commodity[0],
+        args.currency,
+        args.yahooticker,
+        absolute_output_dir,  # pyright ignore[reportAny]
     )
-    commodity.verbose = verbose_level # Set verbosity in the commodity object
+    commodity.verbose = verbose_level  # Set verbosity in the commodity object
 
     if verbose_level >= 1:
         print(f"Processing commodity: {commodity.commodity}")
@@ -218,7 +234,9 @@ if __name__ == "__main__":
         print(f"Output directory: {commodity.output_dir}")
         print(f"Ledger file path: {commodity.file}")
 
-    initial_date = get_initial_date(commodity, default_initial_date=args.begin, verbose=verbose_level) # pyright ignore[reportAny]
+    initial_date = get_initial_date(
+        commodity, default_initial_date=args.begin, verbose=verbose_level
+    )  # pyright ignore[reportAny]
 
     # --- Fetch historical data once ---
     history_data = pd.DataFrame()  # Initialize empty DataFrame
@@ -238,12 +256,14 @@ if __name__ == "__main__":
         # Ensure index is sorted DateTimeIndex
         history_data = history_data.sort_index()
         if verbose_level >= 1:
-            print(f"Fetched {history_data.shape[0]} historical data points for {commodity.commodity}.")
+            print(
+                f"Fetched {history_data.shape[0]} historical data points for {commodity.commodity}."
+            )
         if verbose_level >= 2:
             print(f"Fetched history_data head:\n{history_data.head()}")
 
     except Exception as e:
-        if verbose_level >= 1: # Always print errors if verbosity >= 1
+        if verbose_level >= 1:  # Always print errors if verbosity >= 1
             print(f"Error fetching historical data for {commodity.commodity}: {e}")
         history_data = pd.DataFrame()  # Ensure it's an empty DataFrame on error
         # Depending on requirements, you might exit here or continue if possible
@@ -266,11 +286,15 @@ if __name__ == "__main__":
                                 )
                             except (IndexError, ValueError):
                                 if verbose_level >= 2:
-                                    print(f"Skipping malformed line in {commodity.file}: {line}")
+                                    print(
+                                        f"Skipping malformed line in {commodity.file}: {line}"
+                                    )
                                 continue  # Ignore malformed lines
             except FileNotFoundError:
                 if verbose_level >= 2:
-                    print(f"File {commodity.file} not found while checking processed dates.")
+                    print(
+                        f"File {commodity.file} not found while checking processed dates."
+                    )
                 pass  # File doesn't exist yet, nothing is processed
 
         # Generate target month-end dates within the fetched range
@@ -292,8 +316,12 @@ if __name__ == "__main__":
         relevant_data = history_data.reindex(target_dates, method="ffill").dropna()
 
         if verbose_level >= 2:
-            print(f"Target month-end dates range: {target_dates.min()} to {target_dates.max()}")
-            print(f"Relevant data shape before filtering processed dates: {relevant_data.shape}")
+            print(
+                f"Target month-end dates range: {target_dates.min()} to {target_dates.max()}"
+            )
+            print(
+                f"Relevant data shape before filtering processed dates: {relevant_data.shape}"
+            )
 
         # Filter out dates already processed
         original_count = len(relevant_data)
@@ -302,10 +330,14 @@ if __name__ == "__main__":
         ]
         filtered_count = len(relevant_data)
         if verbose_level >= 2:
-            print(f"Filtered out {original_count - filtered_count} already processed dates.")
-            print(f"Relevant data shape AFTER filtering processed dates: {relevant_data.shape}")
+            print(
+                f"Filtered out {original_count - filtered_count} already processed dates."
+            )
+            print(
+                f"Relevant data shape AFTER filtering processed dates: {relevant_data.shape}"
+            )
             if not relevant_data.empty:
-                 print(f"Relevant data head:\n{relevant_data.head()}")
+                print(f"Relevant data head:\n{relevant_data.head()}")
 
         # Ensure the output directory exists before writing loop
         # Create directory if it doesn't exist (idempotent)
@@ -317,7 +349,9 @@ if __name__ == "__main__":
 
         if not relevant_data.empty:
             if verbose_level >= 1:
-                print(f"Writing {len(relevant_data)} new month-end entries to {commodity.file}...")
+                print(
+                    f"Writing {len(relevant_data)} new month-end entries to {commodity.file}..."
+                )
             with open(commodity.file, "a") as f:
                 for date_ts, row in relevant_data.iterrows():
                     date = date_ts.date()  # Convert timestamp to date
@@ -341,10 +375,14 @@ if __name__ == "__main__":
                             f'P {date_str} "{commodity.commodity}" {commodity.currency}{adjusted_value:f}\n'
                         )
                         if verbose_level >= 2:
-                            print(f"  Wrote: P {date_str} {commodity.commodity} {commodity.currency}{adjusted_value:f}")
+                            print(
+                                f"  Wrote: P {date_str} {commodity.commodity} {commodity.currency}{adjusted_value:f}"
+                            )
                     except Exception as write_error:
-                        if verbose_level >= 1: # Always print errors if verbosity >= 1
-                            print(f"Error writing entry for date {date_str}: {write_error}")
+                        if verbose_level >= 1:  # Always print errors if verbosity >= 1
+                            print(
+                                f"Error writing entry for date {date_str}: {write_error}"
+                            )
                         # Optionally break or continue depending on desired behavior on error
                         # break
         else:
@@ -371,7 +409,9 @@ if __name__ == "__main__":
         latest_value = latest_entry["close"]
 
         if verbose_level >= 1:
-            print(f"Latest fetched date: {latest_date}, Last recorded date in file: {last_date_recorded}")
+            print(
+                f"Latest fetched date: {latest_date}, Last recorded date in file: {last_date_recorded}"
+            )
 
         # Write only if this date hasn't been recorded yet
         if last_date_recorded is None or latest_date > last_date_recorded:
@@ -396,16 +436,24 @@ if __name__ == "__main__":
                         f'P {date_str} "{commodity.commodity}" {commodity.currency}{adjusted_value:f}\n'
                     )
                     if verbose_level >= 2:
-                        print(f"  Wrote latest: P {date_str} {commodity.commodity} {commodity.currency}{adjusted_value:f}")
+                        print(
+                            f"  Wrote latest: P {date_str} {commodity.commodity} {commodity.currency}{adjusted_value:f}"
+                        )
             except Exception as write_error:
-                 if verbose_level >= 1: # Always print errors if verbosity >= 1
-                    print(f"Error writing latest price entry for date {date_str}: {write_error}")
+                if verbose_level >= 1:  # Always print errors if verbosity >= 1
+                    print(
+                        f"Error writing latest price entry for date {date_str}: {write_error}"
+                    )
         else:
             if verbose_level >= 1:
-                print("Latest price date is not newer than the last recorded date. Skipping write.")
+                print(
+                    "Latest price date is not newer than the last recorded date. Skipping write."
+                )
     elif args.latest_price and history_data.empty:
-         if verbose_level >= 1: # Always print errors if verbosity >= 1
-            print(f"Cannot get latest price for {commodity.commodity} as historical data fetch failed.")
+        if verbose_level >= 1:  # Always print errors if verbosity >= 1
+            print(
+                f"Cannot get latest price for {commodity.commodity} as historical data fetch failed."
+            )
 
-if verbose_level >= 1:
-    print(f"Finished processing {commodity.commodity}.")
+    if verbose_level >= 1:
+        print(f"Finished processing {commodity.commodity}.")
