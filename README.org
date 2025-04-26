@@ -35,27 +35,34 @@ cd ~/.local/src/investory/
 Get commodity (given as yahoo ticker) price for each month.
 The price is saved in a ledger file named ~ticker.ledger~.
 
-#+begin_src sh :dir examples/values/ :results silent :async yes :session inv
-python -m investory.values --commodity AAPL --begin 2021-01-01
-#+end_src
-
-#+begin_src sh :dir examples/values/
-head VWCE.DE.ledger
-rm VWCE.DE.ledger
+#+begin_src sh :dir examples/values :results output
+python -m investory.values --commodity AAPL --begin 2023-01-01 --verbose 1
+head AAPL.ledger
+rm AAPL.ledger
 #+end_src
 
 #+RESULTS: 
 #+begin_example
-P 2024-01-31 "VWCE.DE" $110.139999
-P 2024-02-29 "VWCE.DE" $114.220001
-P 2024-04-02 "VWCE.DE" $117.459999
-P 2024-04-30 "VWCE.DE" $116.239998
-P 2024-05-31 "VWCE.DE" $117.519997
-P 2024-06-28 "VWCE.DE" $123.180000
-P 2024-07-31 "VWCE.DE" $123.500000
-P 2024-08-30 "VWCE.DE" $123.019997
-P 2024-09-30 "VWCE.DE" $125.199997
-P 2024-10-31 "VWCE.DE" $126.220001
+Processing commodity: AAPL
+Yahoo Ticker: AAPL
+Currency: $
+Output directory: /home/nasser/.local/src/investory/examples/values
+Ledger file path: /home/nasser/.local/src/investory/examples/values/AAPL.ledger
+File /home/nasser/.local/src/investory/examples/values/AAPL.ledger not found when trying to get last date.
+File /home/nasser/.local/src/investory/examples/values/AAPL.ledger not found, using default initial date: 2023-01-01
+Fetched 580 historical data points for AAPL.
+Writing 27 new month-end entries to /home/nasser/.local/src/investory/examples/values/AAPL.ledger...
+Finished processing AAPL.
+P 2023-01-31 "AAPL" $142.631607
+P 2023-02-28 "AAPL" $145.938263
+P 2023-03-31 "AAPL" $163.253616
+P 2023-04-28 "AAPL" $167.985901
+P 2023-05-31 "AAPL" $175.723053
+P 2023-06-30 "AAPL" $192.299026
+P 2023-07-31 "AAPL" $194.757660
+P 2023-08-31 "AAPL" $186.503082
+P 2023-09-29 "AAPL" $169.964279
+P 2023-10-31 "AAPL" $169.527512
 #+end_example
 
 *** Stock split value
@@ -452,7 +459,7 @@ Consider a simple ledger involving investments:
 #+begin_src ledger :tangle examples/reports/all.ledger
 2023-01-03 * Buy appl
     assets:investments:stocks  1 aapl @ $125.07
-    assets:cash#+end_src
+    assets:cash
 #+end_src
 
 #+begin_src ledger :tangle examples/reports/all.ledger
@@ -483,10 +490,27 @@ Consider a simple ledger involving investments:
 
 Reports are generated with the command:
 
-#+begin_src sh :dir examples/reports :results silent
+#+begin_src sh :dir examples/reports :results output :async yes :session inv-perf
 python -m investory.values --commodity aapl --output-dir data --begin 2023-01-01
-python -m investory.reports --ledger all.ledger --data-dir data
+# python -m investory.values --commodity € --yahooticker EURUSD=X --output-dir data --begin 2023-01-01
+python -m investory.reports --ledger all.ledger --data-dir data --verbose 0 --currency $
 #+end_src
+
+#+RESULTS:
+#+begin_example
+((general) ) 𒆸﻿ ((general) ) 𒆸﻿ Output directory: /home/nasser/.local/src/investory/examples/reports/data
+Ledger file path: /home/nasser/.local/src/investory/examples/reports/data/aapl.ledger
+Last date recorded in /home/nasser/.local/src/investory/examples/reports/data/aapl.ledger: 2025-03-31 00:00:00
+Fetched history_data shape: (18, 5)
+Target month-end dates range: NaT to NaT
+Relevant data shape before filtering processed dates: (0, 5)
+/home/nasser/.local/src/investory/investory/values.py:239: FutureWarning: The behavior of 'isin' with dtype=datetime64[ns] and castable values (e.g. strings) is deprecated. In a future version, these will not be considered matching by isin. Explicitly cast to the appropriate dtype before calling isin instead.
+  relevant_data = relevant_data[~relevant_data.index.map(lambda d: d.date()).isin(processed_dates)]
+Relevant data shape AFTER filtering processed dates: (0, 5)
+No new month-end data to write.
+((general) ) 𒆸﻿ ((general) ) 𒆸﻿ ((general) ) 𒆸﻿
+#+end_example
+
 
 It generates a report for each year, and a summary with current position.
 
