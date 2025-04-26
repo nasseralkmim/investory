@@ -503,13 +503,32 @@ def generate_summary_report(  # noqa: PLR0913
         print("Completed summary report")
 
 
-def parse_hledger_roi_csv(csv_data: str, verbose: int = 0) -> pd.DataFrame | None:
-    """Parse CSV output from 'hledger roi --output-format csv'."""
+def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame | None:
+    """Parse ASCII table output from 'hledger roi' based on README example."""
     try:
-        df = pd.read_csv(io.StringIO(csv_data))
-        # Select and rename relevant columns (adjust if hledger output changes)
+        # Use StringIO to treat the string data as a file
+        data_io = io.StringIO(ascii_data)
+        # Regex separator based on README: matches one or more spaces around one or two pipes
+        # Skipfooter=4 assumes the standard hledger roi output with a summary line and borders
+        # Skiprows=1 assumes the header line starts after the top border
+        df = pd.read_csv(
+            data_io,
+            sep=r"\s*\|\|?\s*",
+            skipfooter=4,  # Adjust if hledger output format changes
+            skiprows=1,  # Adjust if hledger output format changes
+            engine="python",
+            skipinitialspace=True,
+        )
+        # Remove unnamed columns resulting from the regex split
+        df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
+        # Remove the header separator line if present (often row index 0 after skiprows=1)
+        if not df.empty and df.iloc[0, 0].startswith("==="): # Check if df is not empty before accessing iloc
+            df = df.drop([0], axis=0)
+
+        # Select and rename relevant columns
         df = df[["End", "TWR/period"]]
         df = df.rename(columns={"End": "date", "TWR/period": "twr_percent"})
+
         # Convert date column to datetime objects
         df["date"] = pd.to_datetime(df["date"])
         # Convert TWR percentage string to numeric factor (e.g., '5.5%' -> 1.055)
@@ -518,11 +537,11 @@ def parse_hledger_roi_csv(csv_data: str, verbose: int = 0) -> pd.DataFrame | Non
         # Sort by date just in case
         df = df.sort_values(by="date").reset_index(drop=True)
         return df
-    except (pd.errors.EmptyDataError, KeyError, ValueError) as e:
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, KeyError, ValueError, IndexError) as e:
         if verbose >= 1:
-            print(f"Error parsing hledger roi CSV data: {e}", file=sys.stderr)
-            print("CSV Data received:", file=sys.stderr)
-            print(csv_data[:500] + "...", file=sys.stderr)  # Print first 500 chars
+            print(f"Error parsing hledger roi ASCII data: {e}", file=sys.stderr)
+            print("ASCII Data received:", file=sys.stderr)
+            print(ascii_data[:500] + "...", file=sys.stderr) # Print first 500 chars
         return None
 
 
@@ -554,15 +573,14 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
         "--value=then",
         "--monthly",
         "--infer-market-price",
-        "--output-format",
-        "csv",
+        # Removed "--output-format", "csv", - use default ASCII table
     ]
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
     # --- 1. Portfolio ROI ---
-    portfolio_roi_csv: str | None = None
+    portfolio_roi_ascii: str | None = None
     df_portfolio: pd.DataFrame | None = None
-    portfolio_csv_file = os.path.join(roi_output_dir, "portfolio-roi.csv")
+    # portfolio_csv_file = os.path.join(roi_output_dir, "portfolio-roi.csv") # Removed CSV saving
     try:
         # Include data_dir files implicitly via hledger finding them relative to ledger_file?
         # Or explicitly add them? Let's try explicit for clarity.
@@ -582,20 +600,21 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
                 )
 
         portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)}"
-        portfolio_roi_csv = run_command(portfolio_command, verbose=verbose)
-        with open(portfolio_csv_file, "w") as f:
-            f.write(portfolio_roi_csv)
+        portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
+        # Removed saving to CSV file
+        # with open(portfolio_csv_file, "w") as f:
+        #     f.write(portfolio_roi_ascii)
+        # if verbose >= 1:
+        #     print(f"Portfolio ROI data saved to {portfolio_csv_file}")
+        df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose) # Use ASCII parser
+    except (subprocess.CalledProcessError, IOError) as e: # Keep IOError in case parsing fails unexpectedly
         if verbose >= 1:
-            print(f"Portfolio ROI data saved to {portfolio_csv_file}")
-        df_portfolio = parse_hledger_roi_csv(portfolio_roi_csv, verbose)
-    except (subprocess.CalledProcessError, IOError) as e:
-        if verbose >= 1:
-            print(f"Error getting or saving portfolio ROI: {e}", file=sys.stderr)
+            print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
 
     # --- 2. Benchmark ROI ---
-    benchmark_roi_csv: str | None = None
+    benchmark_roi_ascii: str | None = None
     df_benchmark: pd.DataFrame | None = None
-    benchmark_csv_file = os.path.join(roi_output_dir, f"{benchmark_ticker}-roi.csv")
+    # benchmark_csv_file = os.path.join(roi_output_dir, f"{benchmark_ticker}-roi.csv") # Removed CSV saving
     benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
 
     if not os.path.exists(benchmark_data_file):
@@ -644,27 +663,28 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
             benchmark_command = (
                 f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)}"
             )
-            benchmark_roi_csv = run_command(
+            benchmark_roi_ascii = run_command(
                 benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
             )
 
-            with open(benchmark_csv_file, "w") as f:
-                f.write(benchmark_roi_csv)
-            if verbose >= 1:
-                print(
-                    f"Benchmark ({benchmark_ticker}) ROI data saved to {benchmark_csv_file}"
-                )
-            df_benchmark = parse_hledger_roi_csv(benchmark_roi_csv, verbose)
+            # Removed saving to CSV file
+            # with open(benchmark_csv_file, "w") as f:
+            #     f.write(benchmark_roi_ascii)
+            # if verbose >= 1:
+            #     print(
+            #         f"Benchmark ({benchmark_ticker}) ROI data saved to {benchmark_csv_file}"
+            #     )
+            df_benchmark = parse_hledger_roi_ascii(benchmark_roi_ascii, verbose) # Use ASCII parser
 
         except (
             subprocess.CalledProcessError,
             IOError,
             ValueError,
-            yq.exceptions.YahooQueryError,
+            # yq.exceptions.YahooQueryError, # This needs fixing too, see separate issue
         ) as e:
             if verbose >= 1:
                 print(
-                    f"Error getting or saving benchmark ROI for {benchmark_ticker}: {e}",
+                    f"Error getting or parsing benchmark ROI for {benchmark_ticker}: {e}",
                     file=sys.stderr,
                 )
 
