@@ -325,9 +325,14 @@ if __name__ == "__main__":
 
         # Filter out dates already processed
         original_count = len(relevant_data)
-        relevant_data = relevant_data[
-            ~relevant_data.index.map(lambda d: d.date()).isin(processed_dates)
-        ]
+        # Explicitly compare datetime.date objects to avoid FutureWarning
+        # Convert processed_dates set to a list/array for np.isin
+        processed_dates_list = list(processed_dates)
+        # Get index dates as numpy array of datetime.date objects
+        index_dates = relevant_data.index.date
+        # Use np.isin for comparison
+        is_processed_mask = np.isin(index_dates, processed_dates_list)
+        relevant_data = relevant_data[~is_processed_mask]
         filtered_count = len(relevant_data)
         if verbose_level >= 2:
             print(
