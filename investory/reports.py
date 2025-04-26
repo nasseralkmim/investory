@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import pandas as pd  # pyright: ignore [reportMissingTypeStubs]
 
 
-# Add this dictionary
 CURRENCY_SYMBOL_TO_CODE = {
     "€": "EUR",
     "$": "USD",
@@ -63,7 +62,6 @@ def get_account_colors(ledger: str) -> dict[str, str]:
     return account_colors
 
 
-# Add this new function
 def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     """Detect currency symbols/codes used in the ledger."""
     currencies: set[str] = set()
@@ -93,7 +91,6 @@ def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     return currencies
 
 
-# Add this new function
 def find_conversion_files(
     target_currency_symbol: str,
     other_currency_symbols: set[str],
