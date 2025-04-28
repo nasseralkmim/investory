@@ -228,7 +228,7 @@ P 2024-10-31 "VWCE" $126.220001
 See tests.
 
 ** Reports
-*** Toy example
+*** Toy example for ROI
 **** Initial investment
 
 Let's say we bought some shares at this day:
@@ -276,13 +276,13 @@ head aapl.ledger
 
 #+RESULTS:
 #+begin_example
-P 2023-01-31 "aapl" $142.631638
-P 2023-02-28 "aapl" $145.938263
-P 2023-03-31 "aapl" $163.253632
+P 2023-01-31 "aapl" $142.631607
+P 2023-02-28 "aapl" $145.938248
+P 2023-03-31 "aapl" $163.253647
 P 2023-04-28 "aapl" $167.985901
-P 2023-05-31 "aapl" $175.723038
+P 2023-05-31 "aapl" $175.723053
 P 2023-06-30 "aapl" $192.299026
-P 2023-07-31 "aapl" $194.757660
+P 2023-07-31 "aapl" $194.757645
 P 2023-08-31 "aapl" $186.503067
 P 2023-09-29 "aapl" $169.964294
 P 2023-10-31 "aapl" $169.527496
@@ -292,22 +292,39 @@ P 2023-10-31 "aapl" $169.527496
 
 We now want to know the returns of our single-stock portfolio.
 We can do that with =hledger roi= command.
+The =--investment= flag queries our investment accounts, in this case everything recorded with "investments".
+The flag =--profit-loss= queries the accounts that record change in value of the investments, in this case we use the "P" price directive, so we set to an account without any record.
 
 #+begin_src sh :dir examples/reports
-hledger -f all.ledger -f data/aapl.ledger roi --inv investments --pnl unrealized --value=then --monthly --infer-market-price
+hledger -f all.ledger -f data/aapl.ledger roi --investment investments --profit-loss unrealized --value=then --monthly --infer-market-price --end=2024-01-01
 #+end_src
 
 #+RESULTS:
-: +---++------------+------------++---------------+----------+-------------+--------++---------++------------+----------+
-: |   ||      Begin |        End || Value (begin) | Cashflow | Value (end) |    PnL ||     IRR || TWR/period | TWR/year |
-: +===++============+============++===============+==========+=============+========++=========++============+==========+
-: | 1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 | $17.56 || 422.64% ||     14.04% |  369.68% |
-: +---++------------+------------++---------------+----------+-------------+--------++---------++------------+----------+
-: 
+#+begin_example
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+|       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
++=======++============+============++===============+==========+=============+=========++=========++============+==========+
+|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
+|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
+|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
+|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
+|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
+|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
+|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.13% ||      1.28% |   16.15% |
+|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
+|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
+|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
+|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
+|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
++-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
+
+#+end_example
 
 We can see that in one month, the stock went from 125.07 to 142.63.
 An unrealized profit of 17.56.
-A 14.04% growth in one month (/ (- 142.63 125.07) 125.07), amazing apple.
+A 14.04% growth in one month (/ (- 142.63 125.07) 125.07).
 
 **** Index comparison
 
@@ -368,12 +385,12 @@ print(f"Performance year: {(accumulated_return - 1)*100:.2f}%")
 #+RESULTS:
 : Performance year: 53.01%
 
-Impressive return in 2023.
 If we look at market return for this year[fn:2] we see that the S&P500 got around 24%.
 So our single-stock portfolio beat the market by a lot on this year.
 
 We can get the same result for any index by the same procedure.
 In yahoo finance, the S&P 500 is registered with the ticker ^SPX.
+Then, we can create an artificial ledger file with one transaction of buying the index.
 
 #+begin_src sh :dir examples/reports/data
 python -m investory.values --commodity ^spx --begin 2023-01-01
@@ -393,32 +410,35 @@ hledger -f index.ledger -f ^spx.ledger \
 : +---++------------+------------++---------------+-----------+-------------+----------++--------++------------+----------+
 : 
 
-If we plot the TWR for each month:
+To get a nice plot of accumulated return in a year, we need to first export the monthly data.
+Unfortunately, hledger does not offer csv output.
+So we use the default ASCII table.
 
 #+begin_src sh :dir examples/reports
 hledger -f data/index.ledger -f data/^spx.ledger \
-        roi --inv investments --pnl unrealized \
+        roi --investment investments --profit-loss unrealized \
         --value=then --monthly --infer-market-price \
-        --begin=2023-01-01 --end=2024-01-01 > data/spx-twr.org
+        --begin=2023-01-01 --end=2024-01-01 > data/spx-twr.txt
 hledger -f all.ledger -f data/aapl.ledger \
         roi --inv investments --pnl unrealized \
         --value=then --monthly --infer-market-price \
-        --begin=2023-01-01 --end=2024-01-01 > data/portfolio-twr.org
+        --begin=2023-01-01 --end=2024-01-01 > data/portfolio-twr.txt
 #+end_src
 
 #+RESULTS:
+
+Then, we read those with python and plot them.
 
 #+header: :var figure="returns.svg"
 #+header: :epilogue fname=f"{figure}";plt.savefig(fname, bbox_inches="tight")
 #+header: :return fname :results file value
 #+begin_src python :dir examples/reports/data
 import matplotlib.pyplot as plt
-import figtex; figtex.style()
 import pandas as pd
 
 files = {
-    "portfolio-twr.org": dict(label="portfolio", linewidth=2),
-    "spx-twr.org": dict(label="SP500"),
+    "portfolio-twr.txt": dict(label="portfolio", linewidth=2),
+    "spx-twr.txt": dict(label="SP500"),
 }
 
 fig, ax = plt.subplots(figsize=(4, 3))
@@ -451,6 +471,10 @@ ax.legend()
 
 #+RESULTS:
 [[file:examples/reports/data/returns.svg]]
+
+We can see that the index performance is similar to the apple, since apple is a significant part of it.
+This is for a year.
+We would like to know the performance of all the live of our portfolio.
 
 *** Simple ledger
 
@@ -488,32 +512,17 @@ Consider a simple ledger involving investments:
     assets:brokerage
 #+end_src
 
-Reports are generated with the command:
+Reports are generated with the command.
+First we gather that price data that we need.
 
-#+begin_src sh :dir examples/reports :results output :async yes :session inv-perf
-python -m investory.values --commodity aapl --output-dir data --begin 2023-01-01
-# python -m investory.values --commodity € --yahooticker EURUSD=X --output-dir data --begin 2023-01-01
-python -m investory.reports --ledger all.ledger --data-dir data --verbose 0 --currency $
+#+begin_src sh :dir examples/reports :results output :async yes :session inv-perf :results silent
+python -m investory.values --commodity aapl --output-dir data --begin 2023-01-01 --verbose 0
+python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2023-01-01 --verbose 0
+python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $ --roi-report
 #+end_src
-
-#+RESULTS:
-#+begin_example
-((general) ) 𒆸﻿ ((general) ) 𒆸﻿ Output directory: /home/nasser/.local/src/investory/examples/reports/data
-Ledger file path: /home/nasser/.local/src/investory/examples/reports/data/aapl.ledger
-Last date recorded in /home/nasser/.local/src/investory/examples/reports/data/aapl.ledger: 2025-03-31 00:00:00
-Fetched history_data shape: (18, 5)
-Target month-end dates range: NaT to NaT
-Relevant data shape before filtering processed dates: (0, 5)
-/home/nasser/.local/src/investory/investory/values.py:239: FutureWarning: The behavior of 'isin' with dtype=datetime64[ns] and castable values (e.g. strings) is deprecated. In a future version, these will not be considered matching by isin. Explicitly cast to the appropriate dtype before calling isin instead.
-  relevant_data = relevant_data[~relevant_data.index.map(lambda d: d.date()).isin(processed_dates)]
-Relevant data shape AFTER filtering processed dates: (0, 5)
-No new month-end data to write.
-((general) ) 𒆸﻿ ((general) ) 𒆸﻿ ((general) ) 𒆸﻿
-#+end_example
-
 
 It generates a report for each year, and a summary with current position.
 
 [[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
-
+[[file:examples/reports/reports/roi-comparison.svg]]
 

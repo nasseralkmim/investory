@@ -504,44 +504,98 @@ def generate_summary_report(  # noqa: PLR0913
 
 
 def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame | None:
-    """Parse ASCII table output from 'hledger roi' based on README example."""
+    """Parse ASCII table output from 'hledger roi' based on the provided example."""
+    lines = ascii_data.strip().split("\n")
+    header: list[str] = []
+    data: list[list[str]] = []
+    header_found = False
+    data_started = False
+
     try:
-        # Use StringIO to treat the string data as a file
-        data_io = io.StringIO(ascii_data)
-        # Regex separator based on README: matches one or more spaces around one or two pipes
-        # Skipfooter=4 assumes the standard hledger roi output with a summary line and borders
-        # Skiprows=1 assumes the header line starts after the top border
-        df = pd.read_csv(
-            data_io,
-            sep=r"\s*\|\|?\s*",
-            skipfooter=4,  # Adjust if hledger output format changes
-            skiprows=1,  # Adjust if hledger output format changes
-            engine="python",
-            skipinitialspace=True,
-        )
-        # Remove unnamed columns resulting from the regex split
-        df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
-        # Remove the header separator line if present (often row index 0 after skiprows=1)
-        if not df.empty and df.iloc[0, 0].startswith("==="): # Check if df is not empty before accessing iloc
-            df = df.drop([0], axis=0)
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Find header row (contains 'Begin', 'End', 'TWR/period')
+            if (
+                "Begin" in line
+                and "End" in line
+                and "TWR/period" in line
+                and not header_found
+            ):
+                header = [h.strip() for h in line.strip("|").split("|")]
+                header_found = True
+                if verbose >= 2:
+                    print(f"Found header: {header}")
+                continue
+
+            # Skip separator lines like +===... or +---...
+            if line.startswith("+===") or line.startswith("+---"):
+                if header_found and not data_started:
+                    data_started = True  # Data rows start after the '===' separator
+                    if verbose >= 2:
+                        print("Found header separator, starting data collection.")
+                elif data_started:
+                    if verbose >= 2:
+                        print("Found footer separator, stopping data collection.")
+                    break  # Stop processing if we hit a footer separator after data started
+                continue
+
+            # Process data rows
+            if data_started and line.startswith("|"):
+                row_data = [d.strip() for d in line.strip("|").split("|")]
+                # Ensure the number of columns matches the header
+                if len(row_data) == len(header):
+                    data.append(row_data)
+                elif verbose >= 1:
+                    print(
+                        f"Warning: Skipping row due to column mismatch. Expected {len(header)}, got {len(row_data)}. Row: '{line}'",
+                        file=sys.stderr,
+                    )
+
+        if not header or not data:
+            if verbose >= 1:
+                print(
+                    "Error: Could not find header or data rows in hledger roi output.",
+                    file=sys.stderr,
+                )
+                print("ASCII Data received:", file=sys.stderr)
+                print(
+                    ascii_data[:500] + "...", file=sys.stderr
+                )  # Print first 500 chars
+            return None
+
+        df = pd.DataFrame(data, columns=header)
 
         # Select and rename relevant columns
+        if "End" not in df.columns or "TWR/period" not in df.columns:
+            raise KeyError(
+                "Required columns 'End' or 'TWR/period' not found in parsed data."
+            )
+
         df = df[["End", "TWR/period"]]
         df = df.rename(columns={"End": "date", "TWR/period": "twr_percent"})
 
         # Convert date column to datetime objects
         df["date"] = pd.to_datetime(df["date"])
         # Convert TWR percentage string to numeric factor (e.g., '5.5%' -> 1.055)
-        df["twr_factor"] = df["twr_percent"].str.rstrip("%").astype(float) / 100 + 1
+        # Handle potential non-numeric or empty strings before conversion
+        df["twr_percent"] = df["twr_percent"].str.rstrip("%")
+        df["twr_percent"] = pd.to_numeric(df["twr_percent"], errors="coerce")
+        df = df.dropna(subset=["twr_percent"])  # Drop rows where conversion failed
+        df["twr_factor"] = df["twr_percent"] / 100 + 1
+
         df = df.drop(columns=["twr_percent"])
         # Sort by date just in case
         df = df.sort_values(by="date").reset_index(drop=True)
         return df
-    except (pd.errors.ParserError, pd.errors.EmptyDataError, KeyError, ValueError, IndexError) as e:
+
+    except (KeyError, ValueError, IndexError, Exception) as e:
         if verbose >= 1:
             print(f"Error parsing hledger roi ASCII data: {e}", file=sys.stderr)
             print("ASCII Data received:", file=sys.stderr)
-            print(ascii_data[:500] + "...", file=sys.stderr) # Print first 500 chars
+            print(ascii_data[:500] + "...", file=sys.stderr)  # Print first 500 chars
         return None
 
 
@@ -558,7 +612,7 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
     if verbose >= 1:
         print(f"Generating ROI report comparing with benchmark '{benchmark_ticker}'...")
 
-    roi_output_dir = os.path.join(output_dir, "roi")
+    roi_output_dir = output_dir
     os.makedirs(roi_output_dir, exist_ok=True)
 
     # --- Common hledger roi arguments ---
@@ -573,7 +627,8 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
         "--value=then",
         "--monthly",
         "--infer-market-price",
-        # Removed "--output-format", "csv", - use default ASCII table
+        "--end",
+        "today",
     ]
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
@@ -601,13 +656,15 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
 
         portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)}"
         portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
-        # Removed saving to CSV file
-        # with open(portfolio_csv_file, "w") as f:
-        #     f.write(portfolio_roi_ascii)
-        # if verbose >= 1:
-        #     print(f"Portfolio ROI data saved to {portfolio_csv_file}")
-        df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose) # Use ASCII parser
-    except (subprocess.CalledProcessError, IOError) as e: # Keep IOError in case parsing fails unexpectedly
+
+        df_portfolio = parse_hledger_roi_ascii(
+            portfolio_roi_ascii, verbose
+        )
+        print(df_portfolio)
+    except (
+        subprocess.CalledProcessError,
+        IOError,
+    ) as e:  # Keep IOError in case parsing fails unexpectedly
         if verbose >= 1:
             print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
 
@@ -628,13 +685,34 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
         )
     else:
         try:
-            # Get ledger start date to fetch initial benchmark price
-            first_trans_date_str = run_command(
-                f"hledger -f {ledger_file} stats | grep 'First transaction' | cut -d ':' -f 2 | cut -d ',' -f 1 | xargs",
-                verbose,
+            # Get ledger start date from 'hledger stats' output
+            stats_output = run_command(
+                f"hledger -f {ledger_file} stats", verbose=verbose
             )
+            first_trans_date_str = None
+            for line in stats_output.splitlines():
+                # Handle different hledger versions/outputs for date span
+                if line.strip().startswith(
+                    "Transactions span"
+                ) or line.strip().startswith("Date range"):
+                    # Extract the part after the colon, strip whitespace
+                    date_part = line.split(":", 1)[1].strip()
+                    # Extract the first date before " to "
+                    first_trans_date_str = date_part.split(" to ")[0].strip()
+                    break  # Found the line, no need to continue
+
+            if not first_trans_date_str:
+                raise ValueError(
+                    "Could not parse first transaction date from hledger stats output."
+                )
+
+            if verbose >= 2:
+                print(
+                    f"Extracted first transaction date string: {first_trans_date_str}"
+                )
+
             first_trans_date = datetime.datetime.strptime(
-                first_trans_date_str, "%Y-%m-%d"
+                first_trans_date_str, "%Y-%m-%d"  # Assuming YYYY-MM-DD format
             ).date()
             # Fetch benchmark price around the start date
             ticker = yq.Ticker(benchmark_ticker)
@@ -667,14 +745,9 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
                 benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
             )
 
-            # Removed saving to CSV file
-            # with open(benchmark_csv_file, "w") as f:
-            #     f.write(benchmark_roi_ascii)
-            # if verbose >= 1:
-            #     print(
-            #         f"Benchmark ({benchmark_ticker}) ROI data saved to {benchmark_csv_file}"
-            #     )
-            df_benchmark = parse_hledger_roi_ascii(benchmark_roi_ascii, verbose) # Use ASCII parser
+            df_benchmark = parse_hledger_roi_ascii(
+                benchmark_roi_ascii, verbose
+            )  # Use ASCII parser
 
         except (
             subprocess.CalledProcessError,
