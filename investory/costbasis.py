@@ -213,32 +213,49 @@ def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
     return aggregate_inventory
 
 
-def save_output(inventory_list: list[Inventory]) -> None:
-    """Save processed output as a 'csv' file for each year."""
+def save_output(inventory_list: list[Inventory], input_files: list[str]) -> None:
+    """Save processed output into yearly 'csv' files."""
     # combine the inventory of all commodities into a single dataframe
     consolidated_inventory = pd.DataFrame()
     transactions_list = []
     for inventory in inventory_list:
         transactions_list.append(inventory.transactions)
+    transactions_list = []
+    for inventory in inventory_list:
+        transactions_list.append(inventory.transactions)
     consolidated_inventory = pd.concat(transactions_list)
 
-    # group the dataframe by year and save csv
-    # TODO: Make it more robust, right now it the date format is hard coded
-    consolidated_inventory = consolidated_inventory
+    if consolidated_inventory.empty:
+        print("No transactions to save.")
+        return
+
+    # Ensure data is sorted by date before grouping
+    consolidated_inventory = consolidated_inventory.sort_values(by="date")
+
+    # Determine base output directory from the first input file
+    first_input_file = input_files[0] if input_files else "."
+    base_output_dir = os.path.dirname(first_input_file)
+    if not base_output_dir:
+        base_output_dir = "."  # Handle case where input file is in current dir
+
+    output_dir = os.path.join(base_output_dir, "processed")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Group the dataframe by year and save each year to a separate CSV
     grouped_by_year = consolidated_inventory.groupby(pd.Grouper(key="date", freq="YE"))
-    for group, group_data in grouped_by_year:
+
+    for group_date, group_data in grouped_by_year:
         if not group_data.empty:
-            path = group_data["file"].iloc[0]
-            basename = os.path.basename(path)
-            dirname = os.path.dirname(path)
-            if not dirname:
-                dirname = "./"
-            os.makedirs(f"{dirname}/processed", exist_ok=True)
-            # remove the file column
-            group_data = group_data.drop("file", axis=1)
-            group_data.to_csv(
-                f"{dirname}/processed/{basename[:-4]}.out.csv", index=False
-            )
+            year = group_date.year
+            # Construct a consistent output filename based on the year
+            output_filename = os.path.join(output_dir, f"transactions-{year}.out.csv")
+
+            # Remove the temporary 'file' column before saving
+            group_data_to_save = group_data.drop("file", axis=1)
+
+            # Save the year's data
+            group_data_to_save.to_csv(output_filename, index=False)
+            print(f"Saved processed data for year {year} to {output_filename}")
 
 
 if __name__ == "__main__":
@@ -275,4 +292,4 @@ if __name__ == "__main__":
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory_list = generate_aggregate_inventory(transactions)
-    save_output(inventory_list)
+    save_output(inventory_list, files)
