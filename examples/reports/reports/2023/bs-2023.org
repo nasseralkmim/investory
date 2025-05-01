@@ -1,0 +1,36 @@
+* Monthly investments evolution graph
+[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]
+* Summary balance sheet last three years
+Balance Sheet 2021-12-31..2023-12-31, valued at period ends
+
+             || 2021-12-31  2022-12-31  2023-12-31 
+=============++====================================
+ Assets      ||                                    
+-------------++------------------------------------
+-------------++------------------------------------
+             ||                                    
+=============++====================================
+ Liabilities ||                                    
+-------------++------------------------------------
+-------------++------------------------------------
+             ||                                    
+=============++====================================
+ Net:        ||                                    
+* Balance sheet valued at period ends
+Balance Sheet 2023-12-31, valued at period ends
+
+                      || 2023-12-31 
+======================++============
+ Assets               ||            
+----------------------++------------
+ assets               ||          0 
+   cash               ||   [31m$-125.07[m 
+   investments:stocks ||    $125.07 
+======================++============
+ Liabilities          ||            
+----------------------++------------
+* Investments converted to cost in $
+Investments 2023, converted to cost in $ 
+              1 aapl  ...               $125.07  ...
+                           --------------------
+                                        $125.07  
