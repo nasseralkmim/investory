@@ -4,6 +4,7 @@ Add cost basis information.
 The cost basis used is the *average cost*.
 
 """
+
 import pandas as pd
 import glob
 import os
@@ -88,7 +89,7 @@ class Inventory:
             # When split, the transaction cost will be zero, therefore the sign with be
             # NaN, so we just change it to 1.
             sign = sign.fillna(1)
-            self.transactions["transaction cost"] -= (sign)*self.transactions["fee"]
+            self.transactions["transaction cost"] -= (sign) * self.transactions["fee"]
 
     def _set_inventory(self) -> None:
         """Set the current inventory for each transaction."""
@@ -163,7 +164,7 @@ class Inventory:
         period 1.
 
         .. [1] https://www.investopedia.com/terms/a/averagecostmethod.asp
-        """ # noqa: E501
+        """  # noqa: E501
         # divide the data frame for each epoch
         epoch_groups = self.transactions.groupby("epoch")
         epoch_trades_list = [epoch_groups.get_group(x) for x in epoch_groups.groups]
@@ -183,7 +184,9 @@ class Inventory:
                     # inventory cost based on previous inventory cost and current buy
                     # transactions
                     inventory_cost += trade.vol * trade.price
-                    self.transactions.loc[trade.Index, "inventory cost"] = inventory_cost
+                    self.transactions.loc[trade.Index, "inventory cost"] = (
+                        inventory_cost
+                    )
 
                     avg_cost = inventory_cost / inventory
                     self.transactions.loc[trade.Index, "average cost"] = avg_cost
@@ -198,7 +201,9 @@ class Inventory:
                     # inventory cost based on previous inventory cost current average
                     # cost
                     inventory_cost += trade.vol * avg_cost
-                    self.transactions.loc[trade.Index, "inventory cost"] = inventory_cost
+                    self.transactions.loc[trade.Index, "inventory cost"] = (
+                        inventory_cost
+                    )
 
 
 def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
@@ -231,12 +236,15 @@ def save_output(inventory_list: list[Inventory]) -> None:
             os.makedirs(f"{dirname}/processed", exist_ok=True)
             # remove the file column
             group_data = group_data.drop("file", axis=1)
-            group_data.to_csv(f"{dirname}/processed/{basename[:-4]}.out.csv", index=False)
+            group_data.to_csv(
+                f"{dirname}/processed/{basename[:-4]}.out.csv", index=False
+            )
 
 
 if __name__ == "__main__":
 
     import argparse
+
     parser = argparse.ArgumentParser(
         description="Process multiple file paths with whole transaction records."
     )
