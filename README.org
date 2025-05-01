@@ -486,32 +486,6 @@ Consider a simple ledger involving investments:
     assets:cash
 #+end_src
 
-#+begin_src ledger :tangle examples/reports/all.ledger
-2021-01-29 * buy VWCE
-    assets:investments:etf:VWCE    10.0 VWCE @ € 82.23
-    assets:brokerage
-
-2021-03-26 * buy AAPL
-    assets:investments:stocks:AAPL    10.0 AAPL @ € 118.57
-    assets:brokerage
-
-2021-03-31 * buy BTC
-    assets:investments:crypto:BTC    1 BTC @ € 58918.83
-    assets:brokerage
-    
-2022-04-17 * buy VWCE
-    assets:investments:etf:VWCE    10.0 VWCE @ € 99.41
-    assets:brokerage
-
-2022-03-31 * buy AAPL
-    assets:investments:stocks:AAPL    10.0 AAPL @ €171.82
-    assets:brokerage
-
-2024-11-29 * sell BTC
-    assets:investments:crypto:BTC    -1 BTC @ € 97461.52
-    assets:brokerage
-#+end_src
-
 Reports are generated with the command.
 First we gather that price data that we need.
 
