@@ -9,6 +9,7 @@ dependencies = [
 [tool.pyright]
 venvPath = "/home/nasser/.venvs/"
 venv = "general"
+typeCheckingMode = "basic"
 
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
