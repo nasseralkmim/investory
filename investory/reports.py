@@ -658,7 +658,6 @@ def generate_roi_report(
         portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
 
         df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose)
-        print(df_portfolio)
     except (
         subprocess.CalledProcessError,
         IOError,
