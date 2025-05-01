@@ -885,36 +885,28 @@ if __name__ == "__main__":
         choices=[0, 1, 2],
     )
     args: argparse.Namespace = parser.parse_args()
-    # Provide types for args attributes used later
-    ledger_file: str = args.ledger  # pyright ignore[reportAny]
-    target_symbol: str = args.currency  # pyright ignore[reportAny]
-    data_dir: str = args.data_dir  # pyright ignore[reportAny]
-    output_dir: str = args.output_dir  # pyright ignore[reportAny]
-    generate_roi: bool = args.roi_report  # pyright ignore[reportAny]
-    benchmark_ticker: str = args.benchmark_ticker  # pyright ignore[reportAny]
-    verbose_level: int = args.verbose  # pyright ignore[reportAny]
 
     # Ensure output directory exists
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Detect all currencies in the main ledger
-    all_currencies = get_ledger_currencies(ledger_file, verbose=verbose_level)
-    if verbose_level >= 1:
+    all_currencies = get_ledger_currencies(args.ledger, verbose=args.verbose)
+    if args.verbose >= 1:
         print(f"Detected currencies: {all_currencies}")
 
     # Identify currencies that need conversion to the target currency
-    other_currencies = all_currencies - {target_symbol}
-    if verbose_level >= 1:
-        print(f"Target currency: {target_symbol}")
+    other_currencies = all_currencies - {args.currency}
+    if args.verbose >= 1:
+        print(f"Target currency: {args.currency}")
         print(f"Other currencies requiring conversion checks: {other_currencies}")
 
     # Find the necessary conversion files
     conversion_args = find_conversion_files(
-        target_symbol,
+        args.currency,
         other_currencies,
-        data_dir,
+        args.data_dir,
         CURRENCY_SYMBOL_TO_CODE,
-        verbose=verbose_level,
+        verbose=args.verbose,
     )
     print(f"Conversion file arguments: {conversion_args}")
 
@@ -922,41 +914,41 @@ if __name__ == "__main__":
     tasks_to_run: list[tuple] = []
 
     # 1. Yearly and Summary Balance/Income Reports (always run)
-    periods: list[int] = get_ledger_years(ledger_file, verbose=verbose_level)
+    periods: list[int] = get_ledger_years(args.ledger, verbose=args.verbose)
     for period in periods:
         tasks_to_run.append(
             (
                 generate_yearly_report,
                 period,
-                ledger_file,
-                target_symbol,
+                args.ledger,
+                args.currency,
                 conversion_args,
-                verbose_level,
+                args.verbose,
             )
         )
     tasks_to_run.append(
         (
             generate_summary_report,
-            ledger_file,
-            target_symbol,
+            args.ledger,
+            args.currency,
             conversion_args,
-            verbose_level,
+            args.verbose,
         )
     )
 
     # 2. ROI Report (optional)
-    if generate_roi:
+    if args.roi_report:
         # ROI report needs output_dir and benchmark_ticker
         tasks_to_run.append(
             (
                 generate_roi_report,
-                ledger_file,
-                data_dir,
-                target_symbol,
+                args.ledger,
+                args.data_dir,
+                args.currency,
                 conversion_args,
-                output_dir,
-                benchmark_ticker,
-                verbose_level,
+                args.output_dir,
+                args.benchmark_ticker,
+                args.verbose,
             )
         )
 
