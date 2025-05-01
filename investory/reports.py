@@ -269,7 +269,7 @@ def generate_asset_distribution_graph(
     )
 
 
-def generate_asset_evolution_graph(  # noqa: PLR0913
+def generate_asset_evolution_graph(  
     period: int,
     ledger: str,
     target_currency: str,
@@ -423,7 +423,7 @@ def run_command(command: str, stdin_data: str | None = None, verbose: int = 0) -
         raise
 
 
-def generate_yearly_report(  # noqa: PLR0913
+def generate_yearly_report(
     period: int,
     ledger: str,
     target_currency: str,
@@ -477,7 +477,7 @@ def generate_yearly_report(  # noqa: PLR0913
         print(f"Completed report for period: {period}")
 
 
-def generate_summary_report(  # noqa: PLR0913
+def generate_summary_report(
     ledger: str, target_currency: str, conversion_args: list[str], verbose: int = 0
 ):
     # Pass new arguments to graph functions (removed data_dir)
@@ -599,7 +599,7 @@ def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame |
         return None
 
 
-def generate_roi_report(  # noqa: PLR0913 Too many arguments
+def generate_roi_report(
     ledger_file: str,
     data_dir: str,
     target_currency: str,
@@ -657,9 +657,7 @@ def generate_roi_report(  # noqa: PLR0913 Too many arguments
         portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)}"
         portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
 
-        df_portfolio = parse_hledger_roi_ascii(
-            portfolio_roi_ascii, verbose
-        )
+        df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose)
         print(df_portfolio)
     except (
         subprocess.CalledProcessError,
