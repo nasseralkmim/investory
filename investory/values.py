@@ -241,11 +241,13 @@ if __name__ == "__main__":
     # --- Fetch historical data once ---
     history_data = pd.DataFrame()  # Initialize empty DataFrame
     try:
+        if verbose_level >= 2:
+            print(f"Attempting to fetch data for ticker: {commodity.yahoo_ticker}")
         with warnings.catch_warnings():
             warnings.simplefilter(action="ignore", category=FutureWarning)
             ticker = yq.Ticker(commodity.yahoo_ticker)
-            # Fetch data slightly beyond today to ensure latest is included if needed later
-            end_fetch_date = datetime.date.today() + datetime.timedelta(days=1)
+            # fetch data one early to avoid different date time formats in the dataframe
+            end_fetch_date = datetime.date.today() - datetime.timedelta(days=1)
             history_data = ticker.history(
                 start=initial_date, end=end_fetch_date, adj_ohlc=True
             )
