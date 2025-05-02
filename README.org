@@ -1,8 +1,16 @@
+#+begin_center
 [[file:investory_logo.svg]]
+#+end_center
 
 Simple collection python modules to enhance =ledger= applications for portfolio management.
 
 * Features
+  - Fetch historical market prices for commodities/stocks using Yahoo Finance.
+  - Adjust prices for stock splits.
+  - Generate ledger price database entries (P directives).
+  - Calculate cost basis for transactions using FIFO or LIFO methods (via `costbasis` module).
+  - Generate portfolio performance reports (requires `hledger`).
+
 * Installing
 
 Create a virtual environment, if it already does not exist[fn:1].
@@ -221,6 +229,31 @@ P 2024-10-31 "VWCE" $126.220001
 #+end_example
 
 ** Cost basis module
+
+The `costbasis` module processes transaction CSV files to calculate the cost basis for each lot according to specified methods (FIFO, LIFO). It handles stock splits and fees, generating output files ready for import or further analysis.
+
+*** Basic Usage
+
+Given transaction files like those found in `tests/transactions_examples/`, you can calculate the cost basis. For example, using `test1.csv` and `test2.csv` which both contain transactions for the ticker 'AAAA':
+
+#+begin_src sh :results output :dir .
+python -m investory.costbasis tests/transactions_examples/test1.csv tests/transactions_examples/test2.csv --verbose 1
+ls processed/
+rm -rf processed/
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Processing file: tests/transactions_examples/test1.csv
+Processing file: tests/transactions_examples/test2.csv
+Aggregating transactions...
+Generating inventory for AAAA...
+Saving output for AAAA to processed/transactions-AAAA.csv
+processed:
+transactions-AAAA.csv
+#+end_example
+
+This command reads the input CSVs, calculates the cost basis for the commodity ('AAAA'), and saves the results into a file within the `processed/` directory.
 
 ** Reports
 *** Toy example for ROI
