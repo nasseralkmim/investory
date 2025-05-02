@@ -36,11 +36,4 @@
   <!-- Base line -->
   <line x1="10" y1="83" x2="90" y2="83" stroke="#555" stroke-width="2"/>
 
-  <!-- ASCII Table Element -->
-  <text x="10" y="95" font-family="monospace" font-size="7" fill="#333">
-    <tspan x="10" dy="0">| Ticker | PnL  |</tspan>
-    <tspan x="10" dy="8">|--------|------|</tspan>
-    <tspan x="10" dy="8">| AAPL   | +53% |</tspan>
-  </text>
-
 </svg>
