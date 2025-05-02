@@ -324,29 +324,27 @@ def generate_asset_evolution_graph(
     )  # Use target_currency and escape it
     df_evo = df_evo[df_evo.columns].apply(
         pd.to_numeric
-    )  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType, reportAssignmentType]
+    )
     # convert columns name to datetime
-    df_evo.columns = pd.to_datetime(
-        df_evo.columns, format="%Y-%m"
-    )  # pyright: ignore[reportUnknownMemberType]
-    df_evo = df_evo.transpose()  # pyright: ignore[reportUnknownMemberType]
+    df_evo.columns = pd.to_datetime(df_evo.columns, format="%Y-%m")
+    df_evo = df_evo.transpose()
 
     account_to_color = get_account_colors(ledger)
 
     # Avoid problems with negative balances in the plot.
     # Replace negative values with np.NaN
-    df_evo = df_evo.where(df_evo >= 0)  # pyright: ignore[reportUnknownMemberType]
+    df_evo = df_evo.where(df_evo >= 0)
 
     fig: matplotlib.figure.Figure
     ax: matplotlib.axes.Axes
-    fig, ax = plt.subplots(figsize=(7, 3))  # pyright: ignore[reportUnknownMemberType]
+    fig, ax = plt.subplots(figsize=(7, 3))
     if df_evo.empty:
         _ = ax.set_xlim(0, 1)
         _ = ax.set_ylim(0, 1)
         _ = ax.text(
             0.5,
             0.5,
-            "No data available",  # pyright: ignore[reportUnknownMemberType]
+            "No data available",
             ha="center",
             va="center",
             fontsize=12,
@@ -355,10 +353,10 @@ def generate_asset_evolution_graph(
     else:
         ax = df_evo.plot.area(
             ax=ax, color=account_to_color
-        )  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
-        _ = plt.title("Asset Evolution")  # pyright: ignore[reportUnknownMemberType]
+        )
+        _ = plt.title("Asset Evolution")
     fig.savefig(
-        f"{plot_dir}/asset-evolution.svg",  # pyright: ignore[reportUnknownMemberType]
+        f"{plot_dir}/asset-evolution.svg",
         bbox_inches="tight",
         transparent=True,
     )
@@ -811,7 +809,7 @@ def generate_roi_report(
             "Cumulative TWR (Factor)", color="black"
         )  # Match portfolio line
         ax_line.tick_params(axis="y", labelcolor="black")  # Match portfolio line
-        ax_line.tick_params(axis="x", rotation=45)
+        # ax_line.tick_params(axis="x", rotation=45) # Removed forced rotation
         # ax_line.grid(True, axis='y', linestyle='--', alpha=0.6) # Optional grid for primary axis
 
         # --- Bar Plot (Secondary Y-Axis - Right) ---
