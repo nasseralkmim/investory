@@ -496,7 +496,7 @@ It generates a report for each year, and a summary with current position.
 
 [[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
 [[file:examples/reports/reports/roi-comparison.svg]]
-*** More elaborate example
+*** COMMENT More elaborate example
 :PROPERTIES:
 :header-args: :dir examples/reports-2
 :END:
