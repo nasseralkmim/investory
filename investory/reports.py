@@ -269,7 +269,7 @@ def generate_asset_distribution_graph(
     )
 
 
-def generate_asset_evolution_graph(  
+def generate_asset_evolution_graph(
     period: int,
     ledger: str,
     target_currency: str,
@@ -761,9 +761,7 @@ def generate_roi_report(
     # --- 3. Plotting ---
     plot_file = os.path.join(roi_output_dir, "roi-comparison.svg")
     if df_portfolio is not None or df_benchmark is not None:
-        fig, ax = plt.subplots(
-            figsize=(8, 4)
-        )  # pyright: ignore[reportUnknownMemberType]
+        fig, ax = plt.subplots(figsize=(9, 3.5))
 
         if df_portfolio is not None:
             portfolio_cum_twr = df_portfolio["twr_factor"].cumprod()
@@ -785,12 +783,11 @@ def generate_roi_report(
             title="Portfolio vs Benchmark Performance",
         )
         ax.legend()
-        ax.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.xticks(rotation=45)  # pyright: ignore[reportUnknownMemberType]
-        fig.tight_layout()  # pyright: ignore[reportUnknownMemberType]
+        plt.xticks(rotation=45)
+        fig.tight_layout()
         fig.savefig(
             plot_file, bbox_inches="tight", transparent=True
-        )  # pyright: ignore[reportUnknownMemberType]
+        )
         if verbose >= 1:
             print(f"ROI comparison plot saved to {plot_file}")
     elif verbose >= 1:
