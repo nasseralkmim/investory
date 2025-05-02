@@ -5,11 +5,12 @@
 Simple collection python modules to enhance =ledger= applications for portfolio management.
 
 * Features
-  - Fetch historical market prices for commodities/stocks using Yahoo Finance.
-  - Adjust prices for stock splits.
-  - Generate ledger price database entries (P directives).
-  - Calculate cost basis for transactions using FIFO or LIFO methods (via `costbasis` module).
-  - Generate portfolio performance reports (requires `hledger`).
+
+1. Fetch historical market prices for commodities/stocks using Yahoo Finance.
+2. Adjust prices for stock splits.
+3. Generate ledger price database entries (P directives).
+4. Calculate cost basis for transactions using average cost method (via `costbasis` module).
+5. Generate portfolio performance reports (requires `hledger`).
 
 * Installing
 
@@ -230,7 +231,9 @@ P 2024-10-31 "VWCE" $126.220001
 
 ** Cost basis module
 
-The `costbasis` module processes transaction CSV files to calculate the cost basis for each lot according to specified methods (FIFO, LIFO). It handles stock splits and fees, generating output files ready for import or further analysis.
+The `costbasis` module processes transaction CSV files to calculate the cost basis for
+each lot according to average cost basis method.
+It handles stock splits and fees, generating output files ready for import or further analysis.
 
 *** Basic Usage
 

@@ -4,23 +4,43 @@
   <!-- Background -->
   <rect width="100" height="100" fill="#f8f8f8" />
 
+  <!-- Terminal Window Border -->
+  <rect x="5" y="5" width="90" height="85" fill="#2d2d2d" rx="3" ry="3">
+      <title>Terminal Window</title>
+  </rect>
+  <rect x="5" y="5" width="90" height="15" fill="#444" rx="3" ry="3"/>
+  <circle cx="15" cy="12.5" r="3" fill="#ff5f56"/> <!-- Close -->
+  <circle cx="25" cy="12.5" r="3" fill="#ffbd2e"/> <!-- Minimize -->
+  <circle cx="35" cy="12.5" r="3" fill="#27c93f"/> <!-- Maximize -->
+  <rect x="8" y="23" width="84" height="64" fill="#f8f8f8" /> <!-- Inner content area -->
+
+
   <!-- Python Blue Bar -->
-  <rect x="15" y="55" width="20" height="30" fill="#306998">
+  <rect x="15" y="55" width="20" height="28" fill="#306998">
     <title>Python Blue</title>
   </rect>
   <!-- Python Yellow Bar -->
-  <rect x="40" y="35" width="20" height="50" fill="#FFD43B">
+  <rect x="40" y="35" width="20" height="48" fill="#FFD43B">
     <title>Python Yellow</title>
   </rect>
   <!-- Growth Bar (Green) -->
-  <rect x="65" y="15" width="20" height="70" fill="#4CAF50">
+  <rect x="65" y="25" width="20" height="58" fill="#4CAF50">
     <title>Growth</title>
   </rect>
 
-  <!-- Terminal/Ledger Element (Subtle prompt) -->
-  <text x="5" y="95" font-family="monospace" font-size="10" fill="#333">>_</text>
+  <!-- Performance Line -->
+  <polyline points="15,70 40,50 65,30 85,25" fill="none" stroke="#e67e22" stroke-width="2.5">
+      <title>Performance Trend</title>
+  </polyline>
 
   <!-- Base line -->
-  <line x1="10" y1="85" x2="90" y2="85" stroke="#555" stroke-width="2"/>
+  <line x1="10" y1="83" x2="90" y2="83" stroke="#555" stroke-width="2"/>
+
+  <!-- ASCII Table Element -->
+  <text x="10" y="95" font-family="monospace" font-size="7" fill="#333">
+    <tspan x="10" dy="0">| Ticker | PnL  |</tspan>
+    <tspan x="10" dy="8">|--------|------|</tspan>
+    <tspan x="10" dy="8">| AAPL   | +53% |</tspan>
+  </text>
 
 </svg>
