@@ -3,6 +3,8 @@
 #+end_center
 
 Simple collection python modules to enhance =ledger= applications for portfolio management.
+While tools like =ledger= and =hledger= are excellent for tracking overall investment accounts, they often lack specific conveniences for detailed capital gains calculations and reporting, especially when dealing with multiple lots and cost basis methods.
+This project aims to fill some of those gaps.
 
 * Features
 
