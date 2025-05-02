@@ -779,6 +779,22 @@ def generate_roi_report(
                 linewidth=1,  # Thicker line
                 color="black",  # Black color
             )
+            # Calculate and add total gain text
+            if not portfolio_cum_twr.empty:
+                final_twr_factor = portfolio_cum_twr.iloc[-1]
+                total_gain_percent = (final_twr_factor - 1) * 100
+                last_date = df_portfolio["date"].iloc[-1]
+                # Position text slightly above the last point
+                text_y_position = final_twr_factor * 1.02  # Adjust multiplier as needed
+                ax_line.text(
+                    last_date,
+                    text_y_position,
+                    f"Total: {total_gain_percent:+.1f}%",
+                    fontsize=9,
+                    color="black",
+                    ha="right",  # Align text to the right of the date point
+                    va="bottom",  # Position text above the y-coordinate
+                )
 
         if df_benchmark is not None:
             benchmark_cum_twr = df_benchmark["twr_factor"].cumprod()
@@ -885,7 +901,7 @@ def generate_roi_report(
             ax_bar.set_yticks([])  # Hide y-axis ticks if no bars
 
         # --- Final Figure Adjustments ---
-        fig.suptitle("Portfolio vs Benchmark Performance", fontsize=14)  # Overall title
+        fig.suptitle("Portfolio vs Benchmark Performance")  # Overall title
         # Combine legends from both axes
         lines, labels = ax_line.get_legend_handles_labels()
         bars, bar_labels = ax_bar.get_legend_handles_labels()
