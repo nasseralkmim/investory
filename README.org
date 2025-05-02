@@ -494,7 +494,7 @@ python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --cu
 
 It generates a report for each year, and a summary with current position.
 
-[[file:examples/reports/reports/asset-evolution.svg]] [[file:examples/reports/reports/asset-distribution.svg]]
+[[file:examples/reports/reports/asset-distribution.svg]] [[file:examples/reports/reports/asset-evolution.svg]] 
 [[file:examples/reports/reports/roi-comparison.svg]]
 
 *** COMMENT More elaborate example
