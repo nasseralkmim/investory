@@ -1,6 +1,6 @@
-* Introduction
+[[file:investory_logo.svg]]
 
-Simple collection of module and function based on Python Pandas to manage an investment portfolio treated as an inventory of items.
+Simple collection python modules to enhance =ledger= applications for portfolio management.
 
 * Features
 * Installing
@@ -221,8 +221,6 @@ P 2024-10-31 "VWCE" $126.220001
 #+end_example
 
 ** Cost basis module
-
-See tests.
 
 ** Reports
 *** Toy example for ROI
