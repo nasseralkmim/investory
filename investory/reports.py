@@ -1022,7 +1022,7 @@ def generate_combined_figure(
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
-    fig = plt.figure(figsize=(10, 8), constrained_layout=True)
+    fig = plt.figure(figsize=(8, 6), constrained_layout=True)
     gs = fig.add_gridspec(2, 2)
 
     ax_dist = fig.add_subplot(gs[0, 0])  # Top-left
@@ -1078,7 +1078,7 @@ def generate_combined_figure(
         ax_roi.set_title("Portfolio vs Benchmark Performance")  # Still add title
 
     # --- Final Figure Adjustments ---
-    fig.suptitle("Portfolio Overview", fontsize=16)
+    fig.suptitle("Portfolio Overview", fontsize=12)
 
     # Add combined legend for ROI plot below it
     handles, labels = getattr(ax_roi, "legend_handles_labels", ([], []))
@@ -1094,7 +1094,7 @@ def generate_combined_figure(
 
     # Adjust layout slightly to make space for legend if needed
     # constrained_layout usually handles this, but fine-tuning might be required.
-    # fig.subplots_adjust(bottom=0.15) # Example adjustment if legend overlaps
+    fig.subplots_adjust(bottom=0.15) # Example adjustment if legend overlaps
 
     # --- Save Figure ---
     plot_file = os.path.join(output_dir, "combined-overview.svg")
