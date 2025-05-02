@@ -1,5 +1,5 @@
-* Monthly investments evolution graph
-[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]
+* Portfolio Overview Graph
+[[file:combined-overview.svg]]
 * Summary balance sheet last three years
 
 #+begin_export html

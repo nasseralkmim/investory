@@ -153,8 +153,9 @@ def generate_asset_distribution_graph(
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
-) -> None:
-    """Generate pie plot for asset distribution."""
+    ax: matplotlib.axes.Axes,
+) -> matplotlib.axes.Axes:
+    """Generate pie plot for asset distribution on the given axes."""
     command: list[str] = [
         "hledger",
         "-f",
@@ -207,12 +208,12 @@ def generate_asset_distribution_graph(
         account_to_color[account] for account in df_positive["account"]
     ]  # pyright: ignore[reportUnknownVariableType]
 
-    fig: matplotlib.figure.Figure
-    ax: matplotlib.axes.Axes
-    fig, ax = plt.subplots(figsize=(3, 3))  # pyright: ignore[reportUnknownMemberType]
+    # fig: matplotlib.figure.Figure # Removed: Use passed ax
+    # ax: matplotlib.axes.Axes # Removed: Use passed ax
+    # fig, ax = plt.subplots(figsize=(3, 3))  # Removed: Use passed ax
 
     if df_positive.empty:
-        _ = ax.set_xlim(0, 1)
+        _ = ax.set_xlim(0, 1)  # Use passed ax
         _ = ax.set_ylim(0, 1)
         _ = ax.text(
             0.5,
@@ -231,11 +232,9 @@ def generate_asset_distribution_graph(
             ],  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             colors=colors,
             ylabel="",
-            ax=ax,
+            ax=ax,  # Use passed ax
         )
-        _ = plt.title(
-            "Asset Distribution"
-        )  # pyright: ignore[reportUnknownVariableType]
+        _ = ax.set_title("Asset Distribution")  # Use ax.set_title
 
         # display negative values as information text
         if not negative_df.empty:
@@ -255,18 +254,16 @@ def generate_asset_distribution_graph(
                     fontsize=12,
                 )
 
-    # Determine output directory based on period
-    plot_dir = "reports"
-    if period != 0:
-        plot_dir = f"reports/{period}"
-        # Ensure the directory exists (it should be created by generate_yearly_report)
-        # os.makedirs(plot_dir, exist_ok=True) # Optional: Add if needed, but yearly report already creates it.
-
-    fig.savefig(
-        f"{plot_dir}/asset-distribution.svg",  # pyright: ignore[reportUnknownVariableType]
-        bbox_inches="tight",
-        transparent=True,
-    )
+    # Removed saving logic
+    # plot_dir = "reports"
+    # if period != 0:
+    #     plot_dir = f"reports/{period}"
+    # fig.savefig(
+    #     f"{plot_dir}/asset-distribution.svg",
+    #     bbox_inches="tight",
+    #     transparent=True,
+    # )
+    return ax  # Return the axes
 
 
 def generate_asset_evolution_graph(
@@ -274,8 +271,9 @@ def generate_asset_evolution_graph(
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
-) -> None:
-    """Generate area plot for asset evolution."""
+    ax: matplotlib.axes.Axes,
+) -> matplotlib.axes.Axes:
+    """Generate area plot for asset evolution on the given axes."""
 
     command: list[str] = [
         "hledger",
@@ -322,9 +320,7 @@ def generate_asset_evolution_graph(
     df_evo = df_evo.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    df_evo = df_evo[df_evo.columns].apply(
-        pd.to_numeric
-    )
+    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric)
     # convert columns name to datetime
     df_evo.columns = pd.to_datetime(df_evo.columns, format="%Y-%m")
     df_evo = df_evo.transpose()
@@ -335,11 +331,11 @@ def generate_asset_evolution_graph(
     # Replace negative values with np.NaN
     df_evo = df_evo.where(df_evo >= 0)
 
-    fig: matplotlib.figure.Figure
-    ax: matplotlib.axes.Axes
-    fig, ax = plt.subplots(figsize=(7, 3))
+    # fig: matplotlib.figure.Figure # Removed: Use passed ax
+    # ax: matplotlib.axes.Axes # Removed: Use passed ax
+    # fig, ax = plt.subplots(figsize=(7, 3)) # Removed: Use passed ax
     if df_evo.empty:
-        _ = ax.set_xlim(0, 1)
+        _ = ax.set_xlim(0, 1)  # Use passed ax
         _ = ax.set_ylim(0, 1)
         _ = ax.text(
             0.5,
@@ -351,15 +347,15 @@ def generate_asset_evolution_graph(
         )
         _ = ax.axis("off")  # Hide axes
     else:
-        ax = df_evo.plot.area(
-            ax=ax, color=account_to_color
-        )
-        _ = plt.title("Asset Evolution")
-    fig.savefig(
-        f"{plot_dir}/asset-evolution.svg",
-        bbox_inches="tight",
-        transparent=True,
-    )
+        ax = df_evo.plot.area(ax=ax, color=account_to_color)  # Use passed ax
+        _ = ax.set_title("Asset Evolution")  # Use ax.set_title
+    # Removed saving logic
+    # fig.savefig(
+    #     f"{plot_dir}/asset-evolution.svg",
+    #     bbox_inches="tight",
+    #     transparent=True,
+    # )
+    return ax  # Return the axes
 
 
 def run_command(command: str, stdin_data: str | None = None, verbose: int = 0) -> str:
@@ -428,44 +424,50 @@ def generate_yearly_report(
     conversion_args: list[str],
     verbose: int = 0,
 ):
-    os.makedirs(f"reports/{period}", exist_ok=True)
+    report_dir = f"reports/{period}"  # Use variable for clarity
+    os.makedirs(report_dir, exist_ok=True)
 
-    # Pass new arguments to graph functions (removed data_dir)
-    generate_asset_distribution_graph(period, ledger, target_currency, conversion_args)
-    generate_asset_evolution_graph(period, ledger, target_currency, conversion_args)
+    # Removed calls to individual graph functions
+    # generate_asset_distribution_graph(period, ledger, target_currency, conversion_args)
+    # generate_asset_evolution_graph(period, ledger, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
 
+    # Define report file paths
+    is_report_file = os.path.join(report_dir, f"is-{period}.org")
+    bs_report_file = os.path.join(report_dir, f"bs-{period}.org")
+    bs1_temp_file = os.path.join(report_dir, f"bs1-{period}.org")
+    bs2_temp_file = os.path.join(report_dir, f"bs2-{period}.org")
+
+    # Note: Removed references to monthly-in-{period}.svg, asset-evolution.svg, asset-distribution.svg
+    # Consider adding a reference to the main combined-overview.svg if desired, or keep yearly reports text-only.
     commands = [
         # Income statement
-        f"echo -en '* Monthly income graph\n[[file:monthly-in-{period}.svg]]\n' > reports/{period}/is-{period}.org",
-        f"echo -en '* Summary income statement\n' >> reports/{period}/is-{period}.org",
-        f"hledger -f {ledger} is --sort --depth 1 --period 'from {period - 2} to {period + 1}' --tree --pretty=no >> reports/{period}/is-{period}.org",
-        f"echo -en '* Income statement\n' >> reports/{period}/is-{period}.org",
-        f"hledger -f {ledger} is --sort --depth 2 --monthly --average --period {period} --tree --pretty=no >> reports/{period}/is-{period}.org",
-        f"echo -en '* Full Income statement\n' >> reports/{period}/is-{period}.org",
-        f"hledger -f {ledger} is --sort --yearly --period {period} --tree --pretty=no --layout tall >> reports/{period}/is-{period}.org",
-        f"echo -en '* Full Income statement monthly\n' >> reports/{period}/is-{period}.org",
-        f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty=no --layout tall >> reports/{period}/is-{period}.org",
+        f"echo -en '* Summary income statement\n' > {is_report_file}",  # Start new file
+        f"hledger -f {ledger} is --sort --depth 1 --period 'from {period - 2} to {period + 1}' --tree --pretty=no >> {is_report_file}",
+        f"echo -en '* Income statement\n' >> {is_report_file}",
+        f"hledger -f {ledger} is --sort --depth 2 --monthly --average --period {period} --tree --pretty=no >> {is_report_file}",
+        f"echo -en '* Full Income statement\n' >> {is_report_file}",
+        f"hledger -f {ledger} is --sort --yearly --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
+        f"echo -en '* Full Income statement monthly\n' >> {is_report_file}",
+        f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
         # Balance sheet (needs currency conversion)
-        f"echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/{period}/bs-{period}.org",
-        f"echo -en '* Summary balance sheet last three years\n' >> reports/{period}/bs-{period}.org",
+        f"echo -en '* Summary balance sheet last three years\n' > {bs_report_file}",  # Start new file
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> reports/{period}/bs-{period}.org",
-        f"echo -en '* Balance sheet valued at period ends\n' >> reports/{period}/bs-{period}.org",
-        # Add {conv_args_str}, use {target_currency} (implicitly via --value=end without currency?) - Check hledger docs if needed, but usually defaults work if prices exist. Let's keep it simple for now.
-        f"hledger -f {ledger} {conv_args_str} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> reports/{period}/bs-{period}.org",
-        # Cost basis section (needs careful review - converting to R$ was hardcoded)
-        # This section seems specifically designed for R$. Let's make the target currency dynamic here too.
-        f"echo -en '* Investments converted to cost in {target_currency}\n' >> reports/{period}/bs-{period}.org",
-        # This first part gets historical cost in original currency, no conversion needed yet
-        f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total >> reports/{period}/bs1-{period}.org",
-        # This second part applies conversion. Add {conv_args_str}, use {target_currency}, remove hardcoded -f
-        f"hledger -f {ledger} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' >> reports/{period}/bs2-{period}.org",  # Use target_currency
-        f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> reports/{period}/bs-{period}.org",
-        f"paste reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org | column -s $'\t' -t >> reports/{period}/bs-{period}.org",
-        f"rm reports/{period}/bs1-{period}.org reports/{period}/bs2-{period}.org",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
+        f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
+        # Add {conv_args_str}, use {target_currency}
+        f"hledger -f {ledger} {conv_args_str} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> {bs_report_file}",
+        # Cost basis section
+        f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
+        # This first part gets historical cost in original currency
+        f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
+        # This second part applies conversion. Add {conv_args_str}, use {target_currency}
+        f"hledger -f {ledger} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
+        f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> {bs_report_file}",
+        f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {bs_report_file}",
+        f"rm {bs1_temp_file} {bs2_temp_file}",
     ]
 
     for command in commands:
@@ -476,22 +478,29 @@ def generate_yearly_report(
 
 
 def generate_summary_report(
-    ledger: str, target_currency: str, conversion_args: list[str], verbose: int = 0
+    ledger: str,
+    target_currency: str,
+    conversion_args: list[str],
+    output_dir: str,
+    verbose: int = 0,
 ):
-    # Pass new arguments to graph functions (removed data_dir)
-    generate_asset_distribution_graph(0, ledger, target_currency, conversion_args)
-    generate_asset_evolution_graph(0, ledger, target_currency, conversion_args)
+    # Removed calls to individual graph functions
+    # generate_asset_distribution_graph(0, ledger, target_currency, conversion_args)
+    # generate_asset_evolution_graph(0, ledger, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
+    summary_file = os.path.join(output_dir, "summary.org")  # Use output_dir
+    combined_plot_rel_path = "combined-overview.svg"  # Relative path from summary.org
+
     commands = [
-        # Balance sheet
-        "echo -en '* Monthly investments evolution graph\n[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]\n' > reports/summary.org",
-        "echo -en '* Summary balance sheet last three years\n' >> reports/summary.org",
-        "echo -en '\n#+begin_export html\n' >> reports/summary.org",
+        # Reference the new combined plot
+        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file}",
+        f"echo -en '* Summary balance sheet last three years\n' >> {summary_file}",
+        f"echo -en '\n#+begin_export html\n' >> {summary_file}",
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> reports/summary.org",
-        "echo -en '\n#+end_export' >> reports/summary.org",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file}",
+        f"echo -en '\n#+end_export' >> {summary_file}",
     ]
 
     for command in commands:
@@ -597,21 +606,17 @@ def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame |
         return None
 
 
-def generate_roi_report(
+def get_roi_data(
     ledger_file: str,
     data_dir: str,
     target_currency: str,
     conversion_args: list[str],
-    output_dir: str,
     benchmark_ticker: str = "^spx",
     verbose: int = 0,
-):
-    """Generate ROI comparison report against a benchmark."""
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """Fetch and parse ROI data for portfolio and benchmark."""
     if verbose >= 1:
-        print(f"Generating ROI report comparing with benchmark '{benchmark_ticker}'...")
-
-    roi_output_dir = output_dir
-    os.makedirs(roi_output_dir, exist_ok=True)
+        print(f"Fetching ROI data comparing with benchmark '{benchmark_ticker}'...")
 
     # --- Common hledger roi arguments ---
     # NOTE: Using 'investments' and 'unrealized' based on README example.
@@ -633,10 +638,7 @@ def generate_roi_report(
     # --- 1. Portfolio ROI ---
     portfolio_roi_ascii: str | None = None
     df_portfolio: pd.DataFrame | None = None
-    # portfolio_csv_file = os.path.join(roi_output_dir, "portfolio-roi.csv") # Removed CSV saving
     try:
-        # Include data_dir files implicitly via hledger finding them relative to ledger_file?
-        # Or explicitly add them? Let's try explicit for clarity.
         # Find all .ledger files in data_dir (commodity prices)
         data_files_args = []
         if os.path.isdir(data_dir):
@@ -659,14 +661,13 @@ def generate_roi_report(
     except (
         subprocess.CalledProcessError,
         IOError,
-    ) as e:  # Keep IOError in case parsing fails unexpectedly
+    ) as e:
         if verbose >= 1:
             print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
 
     # --- 2. Benchmark ROI ---
     benchmark_roi_ascii: str | None = None
     df_benchmark: pd.DataFrame | None = None
-    # benchmark_csv_file = os.path.join(roi_output_dir, f"{benchmark_ticker}-roi.csv") # Removed CSV saving
     benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
 
     if not os.path.exists(benchmark_data_file):
@@ -756,15 +757,26 @@ def generate_roi_report(
                     file=sys.stderr,
                 )
 
-    # --- 3. Plotting ---
-    plot_file = os.path.join(roi_output_dir, "roi-comparison.svg")
+    return df_portfolio, df_benchmark
+
+
+def plot_roi_comparison(
+    ax: matplotlib.axes.Axes,
+    df_portfolio: pd.DataFrame | None,
+    df_benchmark: pd.DataFrame | None,
+    benchmark_ticker: str = "^spx",
+    verbose: int = 0,
+) -> matplotlib.axes.Axes:
+    """Plot ROI comparison on the given axes."""
+    if verbose >= 1:
+        print("Plotting ROI comparison...")
+
     if df_portfolio is not None or df_benchmark is not None:
-        # Create figure and primary axes for the line plot
-        fig, ax_line = plt.subplots(figsize=(9, 4))
-        # Create secondary axes for the bar plot sharing the x-axis
+        # Create secondary axes for the bar plot sharing the x-axis with the passed ax
+        ax_line = ax  # Rename passed ax for clarity in line plot context
         ax_bar = ax_line.twinx()
 
-        # --- Line Plot (Primary Y-Axis - Left) ---
+        # --- Line Plot (Primary Y-Axis - Left, on ax_line) ---
         portfolio_label = "Portfolio Cumulative TWR"
         benchmark_label = f"Benchmark ({benchmark_ticker}) Cumulative TWR"
 
@@ -809,10 +821,8 @@ def generate_roi_report(
             "Cumulative TWR (Factor)", color="black"
         )  # Match portfolio line
         ax_line.tick_params(axis="y", labelcolor="black")  # Match portfolio line
-        # ax_line.tick_params(axis="x", rotation=45) # Removed forced rotation
-        # ax_line.grid(True, axis='y', linestyle='--', alpha=0.6) # Optional grid for primary axis
 
-        # --- Bar Plot (Secondary Y-Axis - Right) ---
+        # --- Bar Plot (Secondary Y-Axis - Right, on ax_bar) ---
         if df_portfolio is not None and not df_portfolio.empty:
             # Ensure 'date' is datetime type if not already
             df_portfolio["date"] = pd.to_datetime(df_portfolio["date"])
@@ -890,38 +900,86 @@ def generate_roi_report(
                 0, color="grey", linewidth=0.8, linestyle="--"
             )  # Zero line for bars
 
-            # Set x-ticks to match bar labels (optional, might clutter)
-            # ax_line.set_xticks(bar_positions)
-            # ax_line.set_xticklabels(year_labels)
-
         else:
             # Handle case where no portfolio data for bar plot
             ax_bar.set_yticks([])  # Hide y-axis ticks if no bars
 
-        # --- Final Figure Adjustments ---
-        fig.suptitle("Portfolio vs Benchmark Performance")  # Overall title
-        # Combine legends from both axes
+        # --- Final Figure Adjustments (Legend handled by caller) ---
+        ax_line.set_title(
+            "Portfolio vs Benchmark Performance"
+        )  # Set title on the primary axes
+
+        # Combine legends from both axes for the caller to use
         lines, labels = ax_line.get_legend_handles_labels()
         bars, bar_labels = ax_bar.get_legend_handles_labels()
-        # Place legend below plot to avoid overlap
-        fig.legend(
+        ax_line.legend_handles_labels = (
             lines + bars,
             labels + bar_labels,
-            loc="upper center",
-            bbox_to_anchor=(0.5, 0.02),
-            ncol=2,
-        )
-        # Adjust layout to prevent overlap and make space for legend
-        fig.tight_layout(rect=[0, 0.05, 1, 0.95])  # rect=[left, bottom, right, top]
-        fig.savefig(plot_file, bbox_inches="tight", transparent=True)
-        if verbose >= 1:
-            print(f"ROI comparison plot saved to {plot_file}")
+        )  # Store combined for caller
+
     elif verbose >= 1:
+        ax.text(0.5, 0.5, "No ROI data available", ha="center", va="center")
         print("Skipping ROI plot generation as no valid data was parsed.")
 
-    # This message should be outside the plotting block if it refers to the whole function
+    return ax  # Return the primary axes
+
+
+def generate_roi_report(  # Keep the old function signature for now, but it will just call the new ones
+    ledger_file: str,
+    data_dir: str,
+    target_currency: str,
+    conversion_args: list[str],
+    output_dir: str,  # Still needed for the plot file path
+    benchmark_ticker: str = "^spx",
+    verbose: int = 0,
+):
+    """Generate ROI comparison report against a benchmark (Old wrapper, now calls new functions)."""
+    # This function now primarily orchestrates data fetching and plotting.
+    # It still creates its own figure for standalone execution, but the core plotting
+    # logic is in plot_roi_comparison which accepts an axes object.
+
+    # 1. Get Data
+    df_portfolio, df_benchmark = get_roi_data(
+        ledger_file,
+        data_dir,
+        target_currency,
+        conversion_args,
+        benchmark_ticker,
+        verbose,
+    )
+
+    # 2. Plot Data (if any exists)
+    if df_portfolio is not None or df_benchmark is not None:
+        fig, ax = plt.subplots(figsize=(9, 4))  # Create figure for standalone use
+        plot_roi_comparison(ax, df_portfolio, df_benchmark, benchmark_ticker, verbose)
+
+        # --- Final Figure Adjustments for Standalone Plot ---
+        # Retrieve combined legend handles/labels stored by plot_roi_comparison
+        handles, labels = getattr(ax, "legend_handles_labels", ([], []))
+        if handles:  # Only add legend if there are items
+            # Place legend below plot to avoid overlap
+            fig.legend(
+                handles,
+                labels,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 0.02),
+                ncol=2,
+            )
+        # Adjust layout to prevent overlap and make space for legend
+        fig.tight_layout(rect=[0, 0.05, 1, 0.95])  # rect=[left, bottom, right, top]
+
+        # Save the standalone figure
+        plot_file = os.path.join(output_dir, "roi-comparison.svg")
+        os.makedirs(output_dir, exist_ok=True)  # Ensure dir exists
+        fig.savefig(plot_file, bbox_inches="tight", transparent=True)
+        if verbose >= 1:
+            print(f"Standalone ROI comparison plot saved to {plot_file}")
+        plt.close(fig)  # Close the figure to free memory
+    elif verbose >= 1:
+        print("Skipping standalone ROI plot generation as no valid data was parsed.")
+
     if verbose >= 1:
-        print("Finished ROI report generation.")
+        print("Finished ROI report generation process.")
 
 
 def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
@@ -947,6 +1005,108 @@ def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
             )
             return list(range(start_year, end_year + 1))
     return []  # Return an empty list if no span is found
+
+
+def generate_combined_figure(
+    ledger_file: str,
+    data_dir: str,
+    target_currency: str,
+    conversion_args: list[str],
+    output_dir: str,
+    benchmark_ticker: str = "^spx",
+    verbose: int = 0,
+):
+    """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
+    if verbose >= 1:
+        print("Generating combined overview figure...")
+
+    # --- Create Figure and Subplots ---
+    # Use constrained_layout for better automatic spacing
+    fig = plt.figure(figsize=(10, 8), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2)
+
+    ax_dist = fig.add_subplot(gs[0, 0])  # Top-left
+    ax_evol = fig.add_subplot(gs[0, 1])  # Top-right
+    ax_roi = fig.add_subplot(gs[1, :])  # Bottom row, spanning both columns
+
+    # --- Plot Asset Distribution (Top-Left) ---
+    try:
+        # Use period=0 for overall distribution
+        generate_asset_distribution_graph(
+            0, ledger_file, target_currency, conversion_args, ax=ax_dist
+        )
+    except Exception as e:
+        print(f"Error generating asset distribution plot: {e}", file=sys.stderr)
+        ax_dist.text(
+            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+        )
+        ax_dist.set_title("Asset Distribution")  # Still add title
+
+    # --- Plot Asset Evolution (Top-Right) ---
+    try:
+        # Use period=0 for overall evolution
+        generate_asset_evolution_graph(
+            0, ledger_file, target_currency, conversion_args, ax=ax_evol
+        )
+    except Exception as e:
+        print(f"Error generating asset evolution plot: {e}", file=sys.stderr)
+        ax_evol.text(
+            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+        )
+        ax_evol.set_title("Asset Evolution")  # Still add title
+
+    # --- Plot ROI Comparison (Bottom) ---
+    try:
+        # 1. Get ROI Data
+        df_portfolio, df_benchmark = get_roi_data(
+            ledger_file,
+            data_dir,
+            target_currency,
+            conversion_args,
+            benchmark_ticker,
+            verbose,
+        )
+        # 2. Plot ROI Data
+        plot_roi_comparison(
+            ax_roi, df_portfolio, df_benchmark, benchmark_ticker, verbose
+        )
+    except Exception as e:
+        print(f"Error generating ROI comparison plot: {e}", file=sys.stderr)
+        ax_roi.text(
+            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+        )
+        ax_roi.set_title("Portfolio vs Benchmark Performance")  # Still add title
+
+    # --- Final Figure Adjustments ---
+    fig.suptitle("Portfolio Overview", fontsize=16)
+
+    # Add combined legend for ROI plot below it
+    handles, labels = getattr(ax_roi, "legend_handles_labels", ([], []))
+    if handles:  # Only add legend if there are items
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",  # Place below the bottom subplot
+            bbox_to_anchor=(0.5, 0.01),  # Adjust anchor slightly below figure bottom
+            ncol=2,  # Allow multiple columns if needed
+            fontsize="small",
+        )
+
+    # Adjust layout slightly to make space for legend if needed
+    # constrained_layout usually handles this, but fine-tuning might be required.
+    # fig.subplots_adjust(bottom=0.15) # Example adjustment if legend overlaps
+
+    # --- Save Figure ---
+    plot_file = os.path.join(output_dir, "combined-overview.svg")
+    os.makedirs(output_dir, exist_ok=True)  # Ensure dir exists
+    try:
+        fig.savefig(plot_file, bbox_inches="tight", transparent=True)
+        if verbose >= 1:
+            print(f"Combined overview figure saved to {plot_file}")
+    except Exception as e:
+        print(f"Error saving combined figure: {e}", file=sys.stderr)
+    finally:
+        plt.close(fig)  # Close the figure
 
 
 if __name__ == "__main__":
@@ -984,15 +1144,16 @@ if __name__ == "__main__":
         type=str,
         default="./reports",  # Default to ./reports
     )
-    _ = parser.add_argument(
-        "--roi-report",
-        help="Generate ROI comparison report",
-        required=False,
-        action="store_true",
-    )
+    # Removed --roi-report argument as it's now part of the combined figure
+    # _ = parser.add_argument(
+    #     "--roi-report",
+    #     help="Generate ROI comparison report",
+    #     required=False,
+    #     action="store_true",
+    # )
     _ = parser.add_argument(
         "--benchmark-ticker",
-        help="Yahoo Finance ticker for ROI benchmark",
+        help="Yahoo Finance ticker for ROI benchmark (used in combined figure)",
         required=False,
         type=str,
         default="^spx",  # Default to S&P 500
@@ -1031,13 +1192,11 @@ if __name__ == "__main__":
     )
     print(f"Conversion file arguments: {conversion_args}")
 
-    # --- Generate Reports ---
-    tasks_to_run: list[tuple] = []
-
-    # 1. Yearly and Summary Balance/Income Reports (always run)
+    # --- Generate Text Reports (Yearly and Summary) ---
+    text_report_tasks: list[tuple] = []
     periods: list[int] = get_ledger_years(args.ledger, verbose=args.verbose)
     for period in periods:
-        tasks_to_run.append(
+        text_report_tasks.append(
             (
                 generate_yearly_report,
                 period,
@@ -1047,45 +1206,49 @@ if __name__ == "__main__":
                 args.verbose,
             )
         )
-    tasks_to_run.append(
+    text_report_tasks.append(
         (
             generate_summary_report,
             args.ledger,
             args.currency,
             conversion_args,
+            args.output_dir,  # Pass output_dir
             args.verbose,
         )
     )
 
-    # 2. ROI Report (optional)
-    if args.roi_report:
-        # ROI report needs output_dir and benchmark_ticker
-        tasks_to_run.append(
-            (
-                generate_roi_report,
-                args.ledger,
-                args.data_dir,
-                args.currency,
-                conversion_args,
-                args.output_dir,
-                args.benchmark_ticker,
-                args.verbose,
-            )
-        )
-
-    # Execute tasks in parallel
-    # Adjust max_workers if needed, +1 might not be necessary if ROI runs alongside others
+    # Execute text report tasks in parallel
+    if args.verbose >= 1:
+        print("Starting parallel generation of text reports...")
     with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         futures: list[Future[None]] = [
-            executor.submit(task_func, *task_args)  # Unpack args for each function call
-            for task_func, *task_args in tasks_to_run  # Unpack function and its args
+            executor.submit(task_func, *task_args)
+            for task_func, *task_args in text_report_tasks
         ]
-
+        # Wait for text reports to complete
         for future in as_completed(futures):
             try:
-                future.result()  # Check for exceptions raised in subprocesses
+                future.result()  # Check for exceptions
             except Exception as exc:
-                print(f"Report generation task raised an exception: {exc}")
+                print(f"Text report generation task raised an exception: {exc}")
+    if args.verbose >= 1:
+        print("Finished text report generation.")
+
+    # --- Generate Combined Figure (after text reports) ---
+    # This runs sequentially after the parallel tasks above.
+    # Could potentially be parallelized too, but might contend for CPU/memory with plotting.
+    generate_combined_figure(
+        ledger_file=args.ledger,
+        data_dir=args.data_dir,
+        target_currency=args.currency,
+        conversion_args=conversion_args,
+        output_dir=args.output_dir,
+        benchmark_ticker=args.benchmark_ticker,
+        verbose=args.verbose,
+    )
+
+    if args.verbose >= 1:
+        print("All report generation finished.")
 
 # Local Variables:
 # jinx-local-words: "bs bs-"

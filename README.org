@@ -618,8 +618,7 @@ Finally we collect the price data and call reports module.
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
 python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01 --currency $
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
-python -m investory.reports --ledger all.ledger --data-dir data --currency € --roi-report
+python -m investory.reports --ledger all.ledger --data-dir data --currency €
 #+end_src
 
-[[file:examples/reports-2/reports/asset-distribution.svg]] [[file:examples/reports-2/reports/asset-evolution.svg]]
-[[file:examples/reports-2/reports/roi-comparison.svg]]
+[[file:examples/reports-2/reports/combined-overview.svg]]
