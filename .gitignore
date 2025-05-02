@@ -5,4 +5,4 @@
 *.pyc
 .aider*
 .env
-
+/examples/reports-2
