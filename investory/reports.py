@@ -339,7 +339,7 @@ def generate_asset_evolution_graph(
 
     fig: matplotlib.figure.Figure
     ax: matplotlib.axes.Axes
-    fig, ax = plt.subplots(figsize=(8, 3))  # pyright: ignore[reportUnknownMemberType]
+    fig, ax = plt.subplots(figsize=(7, 3))  # pyright: ignore[reportUnknownMemberType]
     if df_evo.empty:
         _ = ax.set_xlim(0, 1)
         _ = ax.set_ylim(0, 1)
