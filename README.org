@@ -580,7 +580,7 @@ date,type,ticker,vol,price,fee
 Then, we process our transaction to compute the cost basis.
 
 #+begin_src sh :async true :session report2-cost-basis :results silent
-python -m investory.costbasis examples/reports-2/transactions.csv
+python -m investory.costbasis --transaction-files transactions.csv
 #+end_src
 
 We now use =hledger= csv import to generate ledger files and add to a "all.ledger"
@@ -614,7 +614,7 @@ done
 
 Finally we collect the price data and call reports module.
 
-#+begin_src sh :async yes :session elaborate :results silent
+#+begin_src sh :async yes :session reports-elaborate :results silent
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
 python -m investory.values --commodity SP500 --yahooticker ^spx --output-dir data --begin 2021-01-01 --currency $
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
