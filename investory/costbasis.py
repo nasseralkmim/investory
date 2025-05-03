@@ -213,7 +213,9 @@ def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
     return aggregate_inventory
 
 
-def save_output(inventory_list: list[Inventory], input_files: list[str]) -> None:
+def save_output(
+    inventory_list: list[Inventory], input_files: list[str], basename: str
+) -> None:
     """Save processed output into yearly 'csv' files."""
     # combine the inventory of all commodities into a single dataframe
     consolidated_inventory = pd.DataFrame()
@@ -247,8 +249,8 @@ def save_output(inventory_list: list[Inventory], input_files: list[str]) -> None
     for group_date, group_data in grouped_by_year:
         if not group_data.empty:
             year = group_date.year
-            # Construct a consistent output filename based on the year
-            output_filename = os.path.join(output_dir, f"transactions-{year}.out.csv")
+            # Construct a consistent output filename based on the year and basename
+            output_filename = os.path.join(output_dir, f"{basename}-{year}.out.csv")
 
             # Remove the temporary 'file' column before saving
             group_data_to_save = group_data.drop("file", axis=1)
@@ -263,33 +265,47 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Process multiple file paths with whole transaction records."
+        description="Process transaction records and calculate cost basis."
     )
     parser.add_argument(
-        "file_paths",
-        metavar="FILE_PATHS",
+        "--transaction-files",
+        metavar="FILE",
         nargs="+",
-        help="Files with transaction records to process",
+        required=True,
+        help="Glob pattern or list of files with transaction records to process.",
+    )
+    parser.add_argument(
+        "--basename",
+        metavar="BASENAME",
+        type=str,
+        default="transactions",
+        help="Basename for the output files (default: transactions). Output files will be named BASENAME-YEAR.out.csv.",
     )
 
-    # Expand wildcard patterns before parsing arguments
-    expanded_args = []
-    for arg in sys.argv[1:]:
-        expanded_args.extend(glob.glob(arg))
+    # Parse known arguments first to handle potential glob patterns
+    args, unknown = parser.parse_known_args()
 
-    # If no files were found, use the original arguments
-    if not expanded_args:
-        expanded_args = sys.argv[1:]
+    # Expand wildcard patterns for transaction files
+    files = []
+    for pattern in args.transaction_files:
+        expanded = glob.glob(pattern)
+        if not expanded:
+            print(f"Warning: Pattern '{pattern}' did not match any files.", file=sys.stderr)
+        files.extend(expanded)
 
-    args = parser.parse_args(expanded_args)
+    # If after expansion no files are found, exit
+    if not files:
+        print("Error: No transaction files found matching the provided patterns.", file=sys.stderr)
+        sys.exit(1)
 
-    # Now args.file_paths will contain the list of expanded file paths
-    files = args.file_paths
+    # Re-parse arguments with the expanded file list if necessary (optional, depends if other args might be affected)
+    # In this case, it's simpler to just use the expanded 'files' list directly.
 
+    print(f"Processing {len(files)} transaction file(s)...")
     for file in files:
-        print(f"processing cost basis {os.path.basename(file)}")
+        print(f"- {os.path.basename(file)}")
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory_list = generate_aggregate_inventory(transactions)
-    save_output(inventory_list, files)
+    save_output(inventory_list, files, args.basename)
