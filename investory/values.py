@@ -255,6 +255,16 @@ if __name__ == "__main__":
         # Ensure the index is just the date part for easier lookup
         if isinstance(history_data.index, pd.MultiIndex):
             history_data.index = history_data.index.get_level_values("date")
+
+        # Check if the index is already a DateTimeIndex
+        # Assuming history_data.index is still the original mixed object type
+        utc_index = pd.to_datetime(history_data.index, errors="coerce", utc=True)
+
+        # Step 2: Remove the timezone information to make it naive
+        naive_index = utc_index.tz_localize(None)  # or .tz_convert(None)
+
+        history_data.index = naive_index
+
         # Ensure index is sorted DateTimeIndex
         history_data = history_data.sort_index()
         if verbose_level >= 1:
