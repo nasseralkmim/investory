@@ -616,7 +616,7 @@ Finally we collect the price data and call reports module.
 
 #+begin_src sh :async yes :session elaborate :results silent
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
-python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01 --currency $
+python -m investory.values --commodity SP500 --yahooticker ^spx --output-dir data --begin 2021-01-01 --currency $
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
 python -m investory.reports --ledger all.ledger --data-dir data --currency €
 #+end_src
