@@ -365,7 +365,8 @@ def generate_asset_evolution_graph(
         ax = df_evo.plot.area(
             ax=ax, color=account_to_color, legend=False
         )  # Use passed ax, remove legend
-        _ = ax.set_title("Asset Evolution")  # Use ax.set_title
+        _ = ax.set_title("Asset Evolution")
+        _ = ax.set_ylabel(f"Value ({target_currency})") # Add Y-axis label with currency
     # Removed saving logic
     # fig.savefig(
     #     f"{plot_dir}/asset-evolution.svg",
@@ -1055,11 +1056,12 @@ def generate_combined_figure(
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
-    fig = plt.figure(figsize=(8, 6), constrained_layout=True)
-    gs = fig.add_gridspec(2, 2)
+    fig = plt.figure(figsize=(9, 6), constrained_layout=True) # Slightly wider figure
+    # Make the evolution plot wider than the distribution plot (e.g., 1:1.5 ratio)
+    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.5])
 
-    ax_dist = fig.add_subplot(gs[0, 0])  # Top-left
-    ax_evol = fig.add_subplot(gs[0, 1])  # Top-right
+    ax_dist = fig.add_subplot(gs[0, 0])  # Top-left (narrower)
+    ax_evol = fig.add_subplot(gs[0, 1])  # Top-right (wider)
     ax_roi = fig.add_subplot(gs[1, :])  # Bottom row, spanning both columns
 
     # --- Plot Asset Distribution (Top-Left) ---
