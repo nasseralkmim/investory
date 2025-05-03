@@ -670,7 +670,7 @@ def get_roi_data(
         roi_investment_account,  # Use parameter
         "--profit-loss",
         roi_pnl_account,  # Use parameter
-        "--value=then",
+        f"--value=then,{target_currency}",  # Add target currency to value=then
         "--monthly",
         "--infer-market-price",
         "--end",
@@ -1063,7 +1063,7 @@ def generate_combined_figure(
     benchmark_ticker: str = "^spx",
     roi_investment_account: str = "investments",
     roi_pnl_account: str = "unrealized",
-    roi_begin_date: str | None = None, # Add begin date parameter
+    roi_begin_date: str | None = None,  # Add begin date parameter
     verbose: int = 0,
 ):
     """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
@@ -1123,7 +1123,7 @@ def generate_combined_figure(
             benchmark_ticker,
             roi_investment_account,
             roi_pnl_account,
-            roi_begin_date, # Pass begin date
+            roi_begin_date,  # Pass begin date
             verbose,
         )
         # 2. Plot ROI Data
@@ -1314,12 +1314,12 @@ if __name__ == "__main__":
         target_currency=args.currency,
         conversion_args=conversion_args,
         output_dir=args.output_dir,
-       benchmark_ticker=args.benchmark_ticker,
-       roi_investment_account=args.roi_investment_account,
-       roi_pnl_account=args.roi_pnl_account,
-       roi_begin_date=args.roi_begin_date, # Pass begin date
-       verbose=args.verbose,
-   )
+        benchmark_ticker=args.benchmark_ticker,
+        roi_investment_account=args.roi_investment_account,
+        roi_pnl_account=args.roi_pnl_account,
+        roi_begin_date=args.roi_begin_date,  # Pass begin date
+        verbose=args.verbose,
+    )
 
     if args.verbose >= 1:
         print("All report generation finished.")
