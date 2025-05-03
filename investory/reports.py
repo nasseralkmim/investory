@@ -347,7 +347,9 @@ def generate_asset_evolution_graph(
         )
         _ = ax.axis("off")  # Hide axes
     else:
-        ax = df_evo.plot.area(ax=ax, color=account_to_color, legend=False)  # Use passed ax, remove legend
+        ax = df_evo.plot.area(
+            ax=ax, color=account_to_color, legend=False
+        )  # Use passed ax, remove legend
         _ = ax.set_title("Asset Evolution")  # Use ax.set_title
     # Removed saving logic
     # fig.savefig(
@@ -1091,10 +1093,6 @@ def generate_combined_figure(
             ncol=2,  # Allow multiple columns if needed
             fontsize="small",
         )
-
-    # Adjust layout slightly to make space for legend if needed
-    # constrained_layout usually handles this, but fine-tuning might be required.
-    fig.subplots_adjust(bottom=0.15) # Example adjustment if legend overlaps
 
     # --- Save Figure ---
     plot_file = os.path.join(output_dir, "combined-overview.svg")
