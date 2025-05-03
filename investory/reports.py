@@ -424,14 +424,26 @@ def generate_yearly_report(
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
+    data_dir: str,  # Add data_dir parameter
     verbose: int = 0,
 ):
     report_dir = f"reports/{period}"  # Use variable for clarity
     os.makedirs(report_dir, exist_ok=True)
 
-    # Removed calls to individual graph functions
-    # generate_asset_distribution_graph(period, ledger, target_currency, conversion_args)
-    # generate_asset_evolution_graph(period, ledger, target_currency, conversion_args)
+    # Find all .ledger files in data_dir (commodity prices)
+    data_files_args: list[str] = []
+    if os.path.isdir(data_dir):
+        data_files_args = [
+            f"-f {os.path.join(data_dir, f)}"
+            for f in os.listdir(data_dir)
+            if f.endswith(".ledger")
+        ]
+    elif verbose >= 1:
+        print(
+            f"Warning: Data directory '{data_dir}' not found for period {period}. Commodity prices might be missing.",
+            file=sys.stderr,
+        )
+    data_files_args_str = " ".join(data_files_args)
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
@@ -456,17 +468,17 @@ def generate_yearly_report(
         f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
         # Balance sheet (needs currency conversion)
         f"echo -en '* Summary balance sheet last three years\n' > {bs_report_file}",  # Start new file
-        # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
+        # Add {conv_args_str}, {data_files_args_str}, use {target_currency}
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
         f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
-        # Add {conv_args_str}, use {target_currency}
-        f"hledger -f {ledger} {conv_args_str} bs --depth 3 --infer-market-prices --value=end --tree --pretty=no --no-total --period {period} >> {bs_report_file}",
+        # Add {conv_args_str}, {data_files_args_str}, use {target_currency}
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} >> {bs_report_file}", # Added target_currency to --value=end
         # Cost basis section
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
-        # This first part gets historical cost in original currency
+        # This first part gets historical cost in original currency (no conversion/data files needed)
         f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
-        # This second part applies conversion. Add {conv_args_str}, use {target_currency}
-        f"hledger -f {ledger} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
+        # This second part applies conversion. Add {conv_args_str}, {data_files_args_str}, use {target_currency}
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
         f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> {bs_report_file}",
         f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {bs_report_file}",
         f"rm {bs1_temp_file} {bs2_temp_file}",
@@ -1194,6 +1206,7 @@ if __name__ == "__main__":
                 args.ledger,
                 args.currency,
                 conversion_args,
+                args.data_dir,  # Pass data_dir
                 args.verbose,
             )
         )
