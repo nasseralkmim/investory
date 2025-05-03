@@ -670,9 +670,9 @@ def get_roi_data(
         roi_investment_account,  # Use parameter
         "--profit-loss",
         roi_pnl_account,  # Use parameter
-        f"--value=then,{target_currency}",  # Add target currency to value=then
+        "--value=then,$",
         "--monthly",
-        "--infer-market-price",
+        "--infer-market-prices",
         "--end",
         "today",
     ]
