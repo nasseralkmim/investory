@@ -347,7 +347,7 @@ def generate_asset_evolution_graph(
         )
         _ = ax.axis("off")  # Hide axes
     else:
-        ax = df_evo.plot.area(ax=ax, color=account_to_color)  # Use passed ax
+        ax = df_evo.plot.area(ax=ax, color=account_to_color, legend=False)  # Use passed ax, remove legend
         _ = ax.set_title("Asset Evolution")  # Use ax.set_title
     # Removed saving logic
     # fig.savefig(
