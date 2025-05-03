@@ -1142,13 +1142,6 @@ if __name__ == "__main__":
         type=str,
         default="./reports",  # Default to ./reports
     )
-    # Removed --roi-report argument as it's now part of the combined figure
-    # _ = parser.add_argument(
-    #     "--roi-report",
-    #     help="Generate ROI comparison report",
-    #     required=False,
-    #     action="store_true",
-    # )
     _ = parser.add_argument(
         "--benchmark-ticker",
         help="Yahoo Finance ticker for ROI benchmark (used in combined figure)",
