@@ -49,11 +49,11 @@ class Commodity:
         # if self.yahoo_ticker in ["VWCE", "SXR8"]:
         #     self.yahoo_ticker = f"{self.yahoo_ticker}.DE"
         #     self.currency: str = "€"
-        if self.commodity[-1] in ["3", "4", "1", "5"]:
-            # if ticker end with number, it is a Brazilian stock, which has a
-            # ".SA" suffix
-            self.yahoo_ticker = f"{self.yahoo_ticker}.SA"
-            self.currency = "R$"
+        # if self.commodity[-1] in ["3", "4", "1", "5"]:
+        #     # if ticker end with number, it is a Brazilian stock, which has a
+        #     # ".SA" suffix
+        #     self.yahoo_ticker = f"{self.yahoo_ticker}.SA"
+        #     self.currency = "R$"
 
 
 def adjust_for_split(
