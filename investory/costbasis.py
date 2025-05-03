@@ -214,7 +214,10 @@ def generate_aggregate_inventory(transactions: pd.DataFrame) -> list[Inventory]:
 
 
 def save_output(
-    inventory_list: list[Inventory], input_files: list[str], basename: str
+    inventory_list: list[Inventory],
+    input_files: list[str],
+    basename: str,
+    verbose: int = 0,
 ) -> None:
     """Save processed output into yearly 'csv' files."""
     # combine the inventory of all commodities into a single dataframe
@@ -228,7 +231,8 @@ def save_output(
     consolidated_inventory = pd.concat(transactions_list)
 
     if consolidated_inventory.empty:
-        print("No transactions to save.")
+        if verbose > 0:
+            print("No transactions to save.")
         return
 
     # Ensure data is sorted by date before grouping
@@ -257,7 +261,8 @@ def save_output(
 
             # Save the year's data
             group_data_to_save.to_csv(output_filename, index=False)
-            print(f"Saved processed data for year {year} to {output_filename}")
+            if verbose > 0:
+                print(f"Saved processed data for year {year} to {output_filename}")
 
 
 if __name__ == "__main__":
@@ -281,6 +286,13 @@ if __name__ == "__main__":
         default="transactions",
         help="Basename for the output files (default: transactions). Output files will be named BASENAME-YEAR.out.csv.",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase output verbosity (e.g., -v, -vv).",
+    )
 
     # Parse known arguments first to handle potential glob patterns
     args, unknown = parser.parse_known_args()
@@ -289,7 +301,7 @@ if __name__ == "__main__":
     files = []
     for pattern in args.transaction_files:
         expanded = glob.glob(pattern)
-        if not expanded:
+        if not expanded and args.verbose > 0: # Only warn if verbose
             print(f"Warning: Pattern '{pattern}' did not match any files.", file=sys.stderr)
         files.extend(expanded)
 
@@ -301,11 +313,12 @@ if __name__ == "__main__":
     # Re-parse arguments with the expanded file list if necessary (optional, depends if other args might be affected)
     # In this case, it's simpler to just use the expanded 'files' list directly.
 
-    print(f"Processing {len(files)} transaction file(s)...")
-    for file in files:
-        print(f"- {os.path.basename(file)}")
+    if args.verbose > 0:
+        print(f"Processing {len(files)} transaction file(s)...")
+        for file in files:
+            print(f"- {os.path.basename(file)}")
 
     transactions = collect_transactions(files)
     transactions = adjust_volume(transactions)
     inventory_list = generate_aggregate_inventory(transactions)
-    save_output(inventory_list, files, args.basename)
+    save_output(inventory_list, files, args.basename, args.verbose)
