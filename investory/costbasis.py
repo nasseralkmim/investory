@@ -297,21 +297,31 @@ if __name__ == "__main__":
     # Parse known arguments first to handle potential glob patterns
     args, unknown = parser.parse_known_args()
 
-    # Expand wildcard patterns for transaction files
+    # Expand wildcard patterns and collect file paths
     files = []
     for pattern in args.transaction_files:
+        # Basic check for glob special characters
+        is_glob_pattern = any(c in pattern for c in '*?[]')
         expanded = glob.glob(pattern)
-        if not expanded and args.verbose > 0: # Only warn if verbose
-            print(f"Warning: Pattern '{pattern}' did not match any files.", file=sys.stderr)
-        files.extend(expanded)
+
+        if not expanded:
+            if args.verbose > 0: # Only warn if verbose
+                # Provide a more specific warning
+                if is_glob_pattern:
+                    print(f"Warning: Glob pattern '{pattern}' did not match any files.", file=sys.stderr)
+                else:
+                    # If it wasn't a pattern, check if the file path itself exists
+                    if not os.path.exists(pattern):
+                        print(f"Warning: File '{pattern}' not found.", file=sys.stderr)
+                    # else: # Path exists but glob didn't find it? Unlikely for non-patterns.
+                    #    print(f"Warning: Path '{pattern}' exists but was not processed.", file=sys.stderr) # Optional debug
+        else:
+            files.extend(expanded)
 
     # If after expansion no files are found, exit
     if not files:
         print("Error: No transaction files found matching the provided patterns.", file=sys.stderr)
         sys.exit(1)
-
-    # Re-parse arguments with the expanded file list if necessary (optional, depends if other args might be affected)
-    # In this case, it's simpler to just use the expanded 'files' list directly.
 
     if args.verbose > 0:
         print(f"Processing {len(files)} transaction file(s)...")
