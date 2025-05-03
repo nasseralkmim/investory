@@ -283,7 +283,9 @@ def generate_asset_evolution_graph(
         # Correctly build the list ["-f", file1, "-f", file2, ...]
         for f in os.listdir(data_dir):
             if f.endswith(".ledger"):
-                data_files_args.extend(["-f", os.path.join(data_dir, f)]) # Use extend to add both items
+                data_files_args.extend(
+                    ["-f", os.path.join(data_dir, f)]
+                )  # Use extend to add both items
     elif verbose >= 1:
         print(
             f"Warning: Data directory '{data_dir}' not found for asset evolution. Commodity prices might be missing.",
@@ -366,7 +368,9 @@ def generate_asset_evolution_graph(
             ax=ax, color=account_to_color, legend=False
         )  # Use passed ax, remove legend
         _ = ax.set_title("Asset Evolution")
-        _ = ax.set_ylabel(f"Value ({target_currency})") # Add Y-axis label with currency
+        _ = ax.set_ylabel(
+            f"Value ({target_currency})"
+        )  # Add Y-axis label with currency
     # Removed saving logic
     # fig.savefig(
     #     f"{plot_dir}/asset-evolution.svg",
@@ -488,7 +492,7 @@ def generate_yearly_report(
         f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
         f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
         # Add {conv_args_str}, {data_files_args_str}, use {target_currency}
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} >> {bs_report_file}", # Added target_currency to --value=end
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} >> {bs_report_file}",  # Added target_currency to --value=end
         # Cost basis section
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
         # This first part gets historical cost in original currency (no conversion/data files needed)
@@ -520,21 +524,24 @@ def generate_summary_report(
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
-    summary_file_abs = os.path.abspath(os.path.join(output_dir, "summary.org")) # Absolute path to summary file
-    combined_plot_abs = os.path.abspath(os.path.join(output_dir, "combined-overview.svg")) # Absolute path to plot file
+    summary_file_abs = os.path.abspath(
+        os.path.join(output_dir, "summary.org")
+    )  # Absolute path to summary file
+    combined_plot_abs = os.path.abspath(
+        os.path.join(output_dir, "combined-overview.svg")
+    )  # Absolute path to plot file
     # Calculate relative path from the directory containing summary.org to the plot file
     summary_dir = os.path.dirname(summary_file_abs)
     combined_plot_rel_path = os.path.relpath(combined_plot_abs, start=summary_dir)
 
-
     commands = [
         # Reference the new combined plot using the calculated relative path
-        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}", # Use absolute path for echo command target
+        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}",  # Use absolute path for echo command target
         f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
         f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}", # Use absolute path for echo command target
-        f"echo -en '\n#+end_export' >> {summary_file_abs}", # Use absolute path for echo command target
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
+        f"echo -en '\n#+end_export' >> {summary_file_abs}",  # Use absolute path for echo command target
     ]
 
     for command in commands:
@@ -646,6 +653,9 @@ def get_roi_data(
     target_currency: str,
     conversion_args: list[str],
     benchmark_ticker: str = "^spx",
+    roi_investment_account: str = "investments",
+    roi_pnl_account: str = "unrealized",
+    roi_begin_date: str | None = None,  # Add begin date parameter
     verbose: int = 0,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
     """Fetch and parse ROI data for portfolio and benchmark."""
@@ -653,20 +663,23 @@ def get_roi_data(
         print(f"Fetching ROI data comparing with benchmark '{benchmark_ticker}'...")
 
     # --- Common hledger roi arguments ---
-    # NOTE: Using 'investments' and 'unrealized' based on README example.
-    # These might need to be configurable in the future.
+    # Use specified investment and PnL accounts
     base_roi_args = [
         "roi",
         "--investment",
-        "investments",
+        roi_investment_account,  # Use parameter
         "--profit-loss",
-        "unrealized",  # Use 'unrealized' as PnL account based on README
+        roi_pnl_account,  # Use parameter
         "--value=then",
         "--monthly",
         "--infer-market-price",
         "--end",
         "today",
     ]
+    # Add begin date if specified
+    if roi_begin_date:
+        base_roi_args.extend(["--begin", roi_begin_date])
+
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
     # --- 1. Portfolio ROI ---
@@ -1048,6 +1061,9 @@ def generate_combined_figure(
     conversion_args: list[str],
     output_dir: str,
     benchmark_ticker: str = "^spx",
+    roi_investment_account: str = "investments",
+    roi_pnl_account: str = "unrealized",
+    roi_begin_date: str | None = None, # Add begin date parameter
     verbose: int = 0,
 ):
     """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
@@ -1056,7 +1072,7 @@ def generate_combined_figure(
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
-    fig = plt.figure(figsize=(9, 6), constrained_layout=True) # Slightly wider figure
+    fig = plt.figure(figsize=(9, 6), constrained_layout=True)  # Slightly wider figure
     # Make the evolution plot wider than the distribution plot (e.g., 1:1.5 ratio)
     gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.5])
 
@@ -1081,7 +1097,13 @@ def generate_combined_figure(
     try:
         # Use period=0 for overall evolution
         generate_asset_evolution_graph(
-            0, ledger_file, target_currency, conversion_args, data_dir, ax=ax_evol, verbose=verbose # Pass data_dir and verbose
+            0,
+            ledger_file,
+            target_currency,
+            conversion_args,
+            data_dir,
+            ax=ax_evol,
+            verbose=verbose,  # Pass data_dir and verbose
         )
     except Exception as e:
         print(f"Error generating asset evolution plot: {e}", file=sys.stderr)
@@ -1099,6 +1121,9 @@ def generate_combined_figure(
             target_currency,
             conversion_args,
             benchmark_ticker,
+            roi_investment_account,
+            roi_pnl_account,
+            roi_begin_date, # Pass begin date
             verbose,
         )
         # 2. Plot ROI Data
@@ -1181,6 +1206,27 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default="^spx",  # Default to S&P 500
+    )
+    _ = parser.add_argument(
+        "--roi-investment-account",
+        help="Account name pattern for investments in ROI calculation",
+        required=False,
+        type=str,
+        default="assets:investments",  # Default matches hledger's usual convention
+    )
+    _ = parser.add_argument(
+        "--roi-pnl-account",
+        help="Account name pattern for profit/loss in ROI calculation",
+        required=False,
+        type=str,
+        default="income:financial",  # Default matches hledger's usual convention for unrealized gains
+    )
+    _ = parser.add_argument(
+        "--roi-begin-date",
+        help="Start date for ROI calculation (YYYY-MM-DD). Defaults to ledger start.",
+        required=False,
+        type=str,
+        default=None,
     )
     _ = parser.add_argument(
         "-v",
@@ -1268,9 +1314,12 @@ if __name__ == "__main__":
         target_currency=args.currency,
         conversion_args=conversion_args,
         output_dir=args.output_dir,
-        benchmark_ticker=args.benchmark_ticker,
-        verbose=args.verbose,
-    )
+       benchmark_ticker=args.benchmark_ticker,
+       roi_investment_account=args.roi_investment_account,
+       roi_pnl_account=args.roi_pnl_account,
+       roi_begin_date=args.roi_begin_date, # Pass begin date
+       verbose=args.verbose,
+   )
 
     if args.verbose >= 1:
         print("All report generation finished.")
