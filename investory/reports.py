@@ -271,15 +271,30 @@ def generate_asset_evolution_graph(
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
+    data_dir: str,  # Add data_dir parameter
     ax: matplotlib.axes.Axes,
+    verbose: int = 0,  # Add verbose parameter for consistency
 ) -> matplotlib.axes.Axes:
     """Generate area plot for asset evolution on the given axes."""
+
+    # Find all .ledger files in data_dir (commodity prices)
+    data_files_args: list[str] = []
+    if os.path.isdir(data_dir):
+        # Correctly build the list ["-f", file1, "-f", file2, ...]
+        for f in os.listdir(data_dir):
+            if f.endswith(".ledger"):
+                data_files_args.extend(["-f", os.path.join(data_dir, f)]) # Use extend to add both items
+    elif verbose >= 1:
+        print(
+            f"Warning: Data directory '{data_dir}' not found for asset evolution. Commodity prices might be missing.",
+            file=sys.stderr,
+        )
 
     command: list[str] = [
         "hledger",
         "-f",
         f"{ledger}",
-        # Remove hardcoded BRLUSD/EURUSD files
+        *data_files_args,  # Add data files
         *conversion_args,  # Add dynamic conversion files
         "bal",
         "acct:^assets:investments",
@@ -504,17 +519,21 @@ def generate_summary_report(
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
-    summary_file = os.path.join(output_dir, "summary.org")  # Use output_dir
-    combined_plot_rel_path = "combined-overview.svg"  # Relative path from summary.org
+    summary_file_abs = os.path.abspath(os.path.join(output_dir, "summary.org")) # Absolute path to summary file
+    combined_plot_abs = os.path.abspath(os.path.join(output_dir, "combined-overview.svg")) # Absolute path to plot file
+    # Calculate relative path from the directory containing summary.org to the plot file
+    summary_dir = os.path.dirname(summary_file_abs)
+    combined_plot_rel_path = os.path.relpath(combined_plot_abs, start=summary_dir)
+
 
     commands = [
-        # Reference the new combined plot
-        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file}",
-        f"echo -en '* Summary balance sheet last three years\n' >> {summary_file}",
-        f"echo -en '\n#+begin_export html\n' >> {summary_file}",
+        # Reference the new combined plot using the calculated relative path
+        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}", # Use absolute path for echo command target
+        f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
+        f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file}",
-        f"echo -en '\n#+end_export' >> {summary_file}",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}", # Use absolute path for echo command target
+        f"echo -en '\n#+end_export' >> {summary_file_abs}", # Use absolute path for echo command target
     ]
 
     for command in commands:
@@ -1060,7 +1079,7 @@ def generate_combined_figure(
     try:
         # Use period=0 for overall evolution
         generate_asset_evolution_graph(
-            0, ledger_file, target_currency, conversion_args, ax=ax_evol
+            0, ledger_file, target_currency, conversion_args, data_dir, ax=ax_evol, verbose=verbose # Pass data_dir and verbose
         )
     except Exception as e:
         print(f"Error generating asset evolution plot: {e}", file=sys.stderr)
