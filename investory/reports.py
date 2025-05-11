@@ -6,14 +6,14 @@ import os
 import re
 import subprocess
 import sys
-import datetime  # Add datetime import
+import datetime
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
 import matplotlib.axes
 import matplotlib.figure
 import matplotlib.pyplot as plt
-import pandas as pd  # pyright: ignore [reportMissingTypeStubs]
-import yahooquery as yq  # Add yahooquery import
+import pandas as pd
+import ybankinplay as yq
 
 
 CURRENCY_SYMBOL_TO_CODE = {
