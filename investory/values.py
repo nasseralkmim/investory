@@ -15,7 +15,7 @@ For example, Brazilian stocks need a '.SA'.
 import numpy as np
 import pandas as pd
 import os
-import yahooquery as yq
+import ybankinplay as yq
 import datetime
 import warnings
 
