@@ -647,6 +647,119 @@ def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame |
         return None
 
 
+def plot_yearly_twr_bars(
+    ax: matplotlib.axes.Axes,
+    df_portfolio: pd.DataFrame | None,
+    df_benchmark: pd.DataFrame | None,
+    benchmark_ticker: str = "^spx",
+    verbose: int = 0,
+) -> matplotlib.axes.Axes:
+    """Plot yearly TWR comparison as a bar chart on the given axes."""
+    if verbose >= 1:
+        print("Plotting yearly TWR bars...")
+
+    def calculate_yearly_twr(df: pd.DataFrame | None, name: str) -> pd.Series | None:
+        """Calculate yearly TWR percentage gain from monthly TWR factors."""
+        if df is None or df.empty:
+            if verbose >= 1:
+                print(f"No data provided for {name} yearly TWR calculation.")
+            return None
+        try:
+            # Ensure 'date' is datetime type if not already
+            df["date"] = pd.to_datetime(df["date"])
+            df["year"] = df["date"].dt.year
+            # Calculate yearly TWR factor by multiplying monthly factors within each year
+            yearly_twr_factor = df.groupby("year")["twr_factor"].prod()
+            # Calculate yearly percentage gain
+            yearly_gain_percent = (yearly_twr_factor - 1) * 100
+            return yearly_gain_percent
+        except Exception as e:
+            if verbose >= 1:
+                print(f"Error calculating yearly TWR for {name}: {e}", file=sys.stderr)
+            return None
+
+    portfolio_yearly = calculate_yearly_twr(df_portfolio, "Portfolio")
+    benchmark_yearly = calculate_yearly_twr(df_benchmark, f"Benchmark ({benchmark_ticker})")
+
+    # Combine results into a single DataFrame for plotting
+    combined_df = pd.DataFrame()
+    if portfolio_yearly is not None:
+        combined_df["Portfolio"] = portfolio_yearly
+    if benchmark_yearly is not None:
+        combined_df[f"Benchmark ({benchmark_ticker})"] = benchmark_yearly
+
+    if combined_df.empty:
+        ax.text(0.5, 0.5, "No yearly ROI data available", ha="center", va="center")
+        ax.set_title("Yearly TWR (%)")
+        if verbose >= 1:
+            print("Skipping yearly TWR bar plot as no valid data was calculated.")
+        return ax
+
+    # --- Bar Plot ---
+    years = combined_df.index
+    n_years = len(years)
+    bar_width = 0.35  # Width of each bar
+    index = range(n_years) # Use simple integer index for positioning
+
+    # Calculate positions for portfolio and benchmark bars
+    pos_portfolio = [i - bar_width / 2 for i in index]
+    pos_benchmark = [i + bar_width / 2 for i in index]
+
+    # Plot Portfolio Bars
+    if "Portfolio" in combined_df.columns:
+        portfolio_gains = combined_df["Portfolio"].values
+        portfolio_colors = ["green" if g >= 0 else "red" for g in portfolio_gains]
+        bars_portfolio = ax.bar(
+            pos_portfolio,
+            portfolio_gains,
+            bar_width,
+            label="Portfolio",
+            color=portfolio_colors,
+        )
+        ax.bar_label(bars_portfolio, fmt="%.1f%%", padding=3, fontsize=8)
+
+    # Plot Benchmark Bars
+    if f"Benchmark ({benchmark_ticker})" in combined_df.columns:
+        benchmark_gains = combined_df[f"Benchmark ({benchmark_ticker})"].values
+        benchmark_colors = ["lightgreen" if g >= 0 else "salmon" for g in benchmark_gains] # Lighter colors for benchmark
+        bars_benchmark = ax.bar(
+            pos_benchmark,
+            benchmark_gains,
+            bar_width,
+            label=f"Benchmark ({benchmark_ticker})",
+            color=benchmark_colors,
+        )
+        ax.bar_label(bars_benchmark, fmt="%.1f%%", padding=3, fontsize=8)
+
+    # --- Final Figure Adjustments ---
+    ax.set_ylabel("Yearly TWR (%)")
+    ax.set_title("Yearly TWR Comparison")
+    ax.set_xticks(index) # Set tick positions
+
+    # Create year labels, handling YTD for the last year if applicable
+    year_labels = []
+    current_year = datetime.datetime.now().year
+    last_data_date_portfolio = df_portfolio["date"].max() if df_portfolio is not None else None
+    last_data_date_benchmark = df_benchmark["date"].max() if df_benchmark is not None else None
+    # Use the latest date from either portfolio or benchmark if available
+    last_data_date = max(filter(None, [last_data_date_portfolio, last_data_date_benchmark]), default=None)
+
+    for year in years:
+        is_ytd = False
+        if last_data_date and year == current_year and (
+            last_data_date.month < 12 or (last_data_date.month == 12 and last_data_date.day < 31)
+        ):
+             year_labels.append(f"{year}\n(YTD)")
+        else:
+             year_labels.append(str(year))
+
+    ax.set_xticklabels(year_labels)
+    ax.axhline(0, color="grey", linewidth=0.8, linestyle="--")  # Zero line
+    ax.legend()
+
+    return ax
+
+
 def get_roi_data(
     ledger_file: str,
     data_dir: str,
@@ -814,15 +927,13 @@ def plot_roi_comparison(
     benchmark_ticker: str = "^spx",
     verbose: int = 0,
 ) -> matplotlib.axes.Axes:
-    """Plot ROI comparison on the given axes."""
+    """Plot cumulative TWR comparison line chart on the given axes."""
     if verbose >= 1:
-        print("Plotting ROI comparison...")
+        print("Plotting cumulative TWR comparison lines...")
+
+    ax_line = ax # Use the passed axes directly
 
     if df_portfolio is not None or df_benchmark is not None:
-        # Create secondary axes for the bar plot sharing the x-axis with the passed ax
-        ax_line = ax  # Rename passed ax for clarity in line plot context
-        ax_bar = ax_line.twinx()
-
         # --- Line Plot (Primary Y-Axis - Left, on ax_line) ---
         portfolio_label = "Portfolio Cumulative TWR"
         benchmark_label = f"Benchmark ({benchmark_ticker}) Cumulative TWR"
@@ -864,111 +975,18 @@ def plot_roi_comparison(
             )
 
         ax_line.set_xlabel("Date")
-        ax_line.set_ylabel(
-            "Cumulative TWR (Factor)", color="black"
-        )  # Match portfolio line
-        ax_line.tick_params(axis="y", labelcolor="black")  # Match portfolio line
+        ax_line.set_ylabel("Cumulative TWR (Factor)")
+        ax_line.tick_params(axis="y") # Use default color
 
-        # --- Bar Plot (Secondary Y-Axis - Right, on ax_bar) ---
-        if df_portfolio is not None and not df_portfolio.empty:
-            # Ensure 'date' is datetime type if not already
-            df_portfolio["date"] = pd.to_datetime(df_portfolio["date"])
-            df_portfolio["year"] = df_portfolio["date"].dt.year
-            # Calculate yearly TWR factor
-            yearly_twr_factor = df_portfolio.groupby("year")["twr_factor"].prod()
-            # Calculate yearly percentage gain
-            yearly_gain_percent = (yearly_twr_factor - 1) * 100
-
-            # Prepare data for bar plot
-            years = yearly_gain_percent.index
-            gains = yearly_gain_percent.values
-
-            # Calculate midpoint date for each year for bar positioning
-            bar_positions = []
-            year_labels = []
-            current_year = datetime.datetime.now().year
-            last_data_date = df_portfolio["date"].max()
-
-            for year in years:
-                is_ytd = False
-                if year == current_year and (
-                    last_data_date.month < 12
-                    or (last_data_date.month == 12 and last_data_date.day < 31)
-                ):
-                    # For YTD, use the midpoint between Jan 1st and last data date
-                    start_date = datetime.datetime(year, 1, 1)
-                    # Ensure last_data_date is timezone-naive if start_date is
-                    if start_date.tzinfo is None and last_data_date.tzinfo is not None:
-                        last_data_date_naive = last_data_date.tz_localize(None)
-                    elif (
-                        start_date.tzinfo is not None and last_data_date.tzinfo is None
-                    ):
-                        # This case is less likely if start_date is fixed naive
-                        last_data_date_naive = last_data_date  # Or convert start_date
-                    else:
-                        last_data_date_naive = (
-                            last_data_date  # Assume compatible or both naive
-                        )
-
-                    mid_point = start_date + (last_data_date_naive - start_date) / 2
-                    year_labels.append(f"{year}\n(YTD)")
-                    is_ytd = True
-                else:
-                    # For full years, use mid-year (approx June 30th)
-                    mid_point = datetime.datetime(year, 6, 30)
-                    year_labels.append(str(year))
-
-                bar_positions.append(mid_point)
-
-            # Determine bar colors based on gain value
-            bar_colors = ["green" if g >= 0 else "red" for g in gains]
-
-            # Create bar plot on secondary axis
-            bar_width_days = 150  # Adjust width as needed (approx half a year)
-            bars = ax_bar.bar(
-                bar_positions,
-                gains,
-                width=datetime.timedelta(days=bar_width_days),
-                color=bar_colors,  # Use conditional colors
-                alpha=0.4,  # Increased transparency
-                label="Portfolio Yearly/YTD TWR (%)",
-            )
-
-            # Add labels on top of bars
-            ax_bar.bar_label(bars, fmt="%.1f%%", padding=3)
-
-            ax_bar.set_ylabel(
-                "Yearly / YTD Gain (%)", color="dimgray"  # Adjusted color for clarity
-            )  # Label for secondary axis
-            ax_bar.tick_params(
-                axis="y", labelcolor="dimgray"
-            )  # Adjusted color for clarity
-            ax_bar.axhline(
-                0, color="grey", linewidth=0.8, linestyle="--"
-            )  # Zero line for bars
-
-        else:
-            # Handle case where no portfolio data for bar plot
-            ax_bar.set_yticks([])  # Hide y-axis ticks if no bars
-
-        # --- Final Figure Adjustments (Legend handled by caller) ---
-        ax_line.set_title(
-            "Portfolio vs Benchmark Performance"
-        )  # Set title on the primary axes
-
-        # Combine legends from both axes for the caller to use
-        lines, labels = ax_line.get_legend_handles_labels()
-        bars, bar_labels = ax_bar.get_legend_handles_labels()
-        ax_line.legend_handles_labels = (
-            lines + bars,
-            labels + bar_labels,
-        )  # Store combined for caller
+        # --- Final Figure Adjustments ---
+        ax_line.set_title("Cumulative Performance") # More specific title
+        ax_line.legend() # Add legend directly here
 
     elif verbose >= 1:
-        ax.text(0.5, 0.5, "No ROI data available", ha="center", va="center")
-        print("Skipping ROI plot generation as no valid data was parsed.")
+        ax_line.text(0.5, 0.5, "No ROI data available", ha="center", va="center")
+        print("Skipping cumulative ROI line plot as no valid data was parsed.")
 
-    return ax  # Return the primary axes
+    return ax_line # Return the axes
 
 
 def generate_roi_report(  # Keep the old function signature for now, but it will just call the new ones
@@ -980,10 +998,12 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
     benchmark_ticker: str = "^spx",
     verbose: int = 0,
 ):
-    """Generate ROI comparison report against a benchmark (Old wrapper, now calls new functions)."""
-    # This function now primarily orchestrates data fetching and plotting.
-    # It still creates its own figure for standalone execution, but the core plotting
-    # logic is in plot_roi_comparison which accepts an axes object.
+    """Generate standalone ROI comparison plot (Deprecated, use generate_combined_figure)."""
+    # This function now primarily orchestrates data fetching and plotting for a standalone file.
+    # The core plotting logic is in plot_roi_comparison and plot_yearly_twr_bars.
+
+    if verbose >= 1:
+        print("Warning: generate_roi_report is deprecated. Use generate_combined_figure for integrated plots.")
 
     # 1. Get Data
     df_portfolio, df_benchmark = get_roi_data(
@@ -995,28 +1015,24 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
         verbose,
     )
 
-    # 2. Plot Data (if any exists)
+    # 2. Plot Data (if any exists) - Create two subplots for standalone version
     if df_portfolio is not None or df_benchmark is not None:
-        fig, ax = plt.subplots(figsize=(9, 4))  # Create figure for standalone use
-        plot_roi_comparison(ax, df_portfolio, df_benchmark, benchmark_ticker, verbose)
+        # Create a figure with two subplots vertically stacked
+        fig, (ax_line, ax_bar) = plt.subplots(2, 1, figsize=(9, 7), sharex=False) # Taller figure, don't share x
+
+        # Plot cumulative lines on the top axes
+        plot_roi_comparison(ax_line, df_portfolio, df_benchmark, benchmark_ticker, verbose)
+
+        # Plot yearly bars on the bottom axes
+        plot_yearly_twr_bars(ax_bar, df_portfolio, df_benchmark, benchmark_ticker, verbose)
 
         # --- Final Figure Adjustments for Standalone Plot ---
-        # Retrieve combined legend handles/labels stored by plot_roi_comparison
-        handles, labels = getattr(ax, "legend_handles_labels", ([], []))
-        if handles:  # Only add legend if there are items
-            # Place legend below plot to avoid overlap
-            fig.legend(
-                handles,
-                labels,
-                loc="upper center",
-                bbox_to_anchor=(0.5, 0.02),
-                ncol=2,
-            )
-        # Adjust layout to prevent overlap and make space for legend
-        fig.tight_layout(rect=[0, 0.05, 1, 0.95])  # rect=[left, bottom, right, top]
+        fig.suptitle("Portfolio vs Benchmark Performance", fontsize=12, y=0.98) # Add overall title
+        # Adjust layout to prevent overlap
+        fig.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust rect to make space for suptitle
 
         # Save the standalone figure
-        plot_file = os.path.join(output_dir, "roi-comparison.svg")
+        plot_file = os.path.join(output_dir, "roi-comparison-standalone.svg") # New name
         os.makedirs(output_dir, exist_ok=True)  # Ensure dir exists
         fig.savefig(plot_file, bbox_inches="tight", transparent=True)
         if verbose >= 1:
@@ -1026,7 +1042,7 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
         print("Skipping standalone ROI plot generation as no valid data was parsed.")
 
     if verbose >= 1:
-        print("Finished ROI report generation process.")
+        print("Finished standalone ROI report generation process.")
 
 
 def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
@@ -1072,13 +1088,15 @@ def generate_combined_figure(
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
-    fig = plt.figure(figsize=(9, 6), constrained_layout=True)  # Slightly wider figure
-    # Make the evolution plot wider than the distribution plot (e.g., 1:1.5 ratio)
-    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.5])
+    fig = plt.figure(figsize=(10, 8), constrained_layout=True) # Adjusted size for 2x2 layout
+    # 2x2 Grid: Dist(TL), Evol(TR), CumROI(BL), YearlyROI(BR)
+    # Give evolution and yearly ROI slightly more width
+    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.2])
 
-    ax_dist = fig.add_subplot(gs[0, 0])  # Top-left (narrower)
-    ax_evol = fig.add_subplot(gs[0, 1])  # Top-right (wider)
-    ax_roi = fig.add_subplot(gs[1, :])  # Bottom row, spanning both columns
+    ax_dist = fig.add_subplot(gs[0, 0])      # Top-left
+    ax_evol = fig.add_subplot(gs[0, 1])      # Top-right
+    ax_roi_line = fig.add_subplot(gs[1, 0])  # Bottom-left
+    ax_roi_bars = fig.add_subplot(gs[1, 1])  # Bottom-right
 
     # --- Plot Asset Distribution (Top-Left) ---
     try:
@@ -1112,9 +1130,9 @@ def generate_combined_figure(
         )
         ax_evol.set_title("Asset Evolution")  # Still add title
 
-    # --- Plot ROI Comparison (Bottom) ---
+    # --- Get ROI Data (needed for both bottom plots) ---
+    df_portfolio, df_benchmark = None, None # Initialize
     try:
-        # 1. Get ROI Data
         df_portfolio, df_benchmark = get_roi_data(
             ledger_file,
             data_dir,
@@ -1126,31 +1144,46 @@ def generate_combined_figure(
             roi_begin_date,  # Pass begin date
             verbose,
         )
-        # 2. Plot ROI Data
+    except Exception as e:
+         print(f"Error getting ROI data: {e}", file=sys.stderr)
+         # Add error text to both ROI plots if data fetching fails
+         ax_roi_line.text(0.5, 0.5, "Error getting ROI data", ha="center", va="center", color="red")
+         ax_roi_bars.text(0.5, 0.5, "Error getting ROI data", ha="center", va="center", color="red")
+         ax_roi_line.set_title("Cumulative Performance")
+         ax_roi_bars.set_title("Yearly TWR Comparison")
+
+
+    # --- Plot Cumulative ROI Comparison (Bottom-Left) ---
+    try:
         plot_roi_comparison(
-            ax_roi, df_portfolio, df_benchmark, benchmark_ticker, verbose
+            ax_roi_line, df_portfolio, df_benchmark, benchmark_ticker, verbose
         )
     except Exception as e:
-        print(f"Error generating ROI comparison plot: {e}", file=sys.stderr)
-        ax_roi.text(
+        print(f"Error generating cumulative ROI line plot: {e}", file=sys.stderr)
+        ax_roi_line.text(
             0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
         )
-        ax_roi.set_title("Portfolio vs Benchmark Performance")  # Still add title
+        ax_roi_line.set_title("Cumulative Performance") # Still add title
+
+
+    # --- Plot Yearly TWR Bars (Bottom-Right) ---
+    try:
+        plot_yearly_twr_bars(
+             ax_roi_bars, df_portfolio, df_benchmark, benchmark_ticker, verbose
+        )
+    except Exception as e:
+        print(f"Error generating yearly TWR bar plot: {e}", file=sys.stderr)
+        ax_roi_bars.text(
+            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+        )
+        ax_roi_bars.set_title("Yearly TWR Comparison") # Still add title
+
 
     # --- Final Figure Adjustments ---
-    fig.suptitle("Portfolio Overview", fontsize=12)
+    fig.suptitle("Portfolio Overview", fontsize=14) # Slightly larger title
 
-    # Add combined legend for ROI plot below it
-    handles, labels = getattr(ax_roi, "legend_handles_labels", ([], []))
-    if handles:  # Only add legend if there are items
-        fig.legend(
-            handles,
-            labels,
-            loc="lower center",  # Place below the bottom subplot
-            bbox_to_anchor=(0.5, 0.01),  # Adjust anchor slightly below figure bottom
-            ncol=2,  # Allow multiple columns if needed
-            fontsize="small",
-        )
+    # No automatic combined legend needed as each plot has its own now.
+    # constrained_layout should handle spacing.
 
     # --- Save Figure ---
     plot_file = os.path.join(output_dir, "combined-overview.svg")
