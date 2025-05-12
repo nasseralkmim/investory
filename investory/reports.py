@@ -1088,17 +1088,23 @@ def generate_combined_figure(
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
-    fig = plt.figure(figsize=(10, 8), constrained_layout=True) # Adjusted size for 2x2 layout
-    # 2x2 Grid: Dist(TL), Evol(TR), CumROI(BL), YearlyROI(BR)
-    # Give evolution and yearly ROI slightly more width
-    gs = fig.add_gridspec(2, 2, width_ratios=[1, 1.2])
+    # Adjust figsize for a potentially wider layout
+    fig = plt.figure(figsize=(12, 8), constrained_layout=True)
 
-    ax_dist = fig.add_subplot(gs[0, 0])      # Top-left
-    ax_evol = fig.add_subplot(gs[0, 1])      # Top-right
-    ax_roi_line = fig.add_subplot(gs[1, 0])  # Bottom-left
-    ax_roi_bars = fig.add_subplot(gs[1, 1])  # Bottom-right
+    # Define a 3-row, 2-column grid
+    # Row 0: Asset Evolution (spans 2 cols)
+    # Row 1: Asset Distribution (col 0), Yearly TWR (col 1)
+    # Row 2: Cumulative TWR (spans 2 cols)
+    # Adjust height/width ratios for desired emphasis
+    gs = fig.add_gridspec(3, 2, height_ratios=[1.5, 1, 1], width_ratios=[1, 1.2])
 
-    # --- Plot Asset Distribution (Top-Left) ---
+    ax_evol = fig.add_subplot(gs[0, :])      # Top row, spans both columns
+    ax_dist = fig.add_subplot(gs[1, 0])      # Middle row, left column
+    ax_roi_bars = fig.add_subplot(gs[1, 1])  # Middle row, right column
+    ax_roi_line = fig.add_subplot(gs[2, :])  # Bottom row, spans both columns
+
+
+    # --- Plot Asset Distribution (Middle-Left) ---
     try:
         # Use period=0 for overall distribution
         generate_asset_distribution_graph(
