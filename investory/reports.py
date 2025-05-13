@@ -1073,7 +1073,7 @@ def plot_roi_comparison(
         if df_bm is not None and not df_bm.empty:
             has_data = True
             ticker = benchmark_tickers[i]
-            benchmark_label = f"Benchmark ({ticker}) Cumulative TWR"
+            benchmark_label = f"Benchmark ({ticker})"
             benchmark_cum_twr = df_bm["twr_factor"].cumprod()
             ax_line.plot(
                 df_bm["date"],
