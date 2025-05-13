@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 import sys
+import sys
 import datetime
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
@@ -658,8 +659,8 @@ def parse_hledger_roi_ascii(ascii_data: str, verbose: int = 0) -> pd.DataFrame |
 def plot_yearly_twr_bars(
     ax: matplotlib.axes.Axes,
     df_portfolio: pd.DataFrame | None,
-    df_benchmark: pd.DataFrame | None,
-    benchmark_ticker: str = "^spx",
+    dfs_benchmark: list[pd.DataFrame | None],
+    benchmark_tickers: list[str],
     verbose: int = 0,
 ) -> matplotlib.axes.Axes:
     """Plot yearly TWR comparison as a bar chart on the given axes."""
@@ -673,12 +674,9 @@ def plot_yearly_twr_bars(
                 print(f"No data provided for {name} yearly TWR calculation.")
             return None
         try:
-            # Ensure 'date' is datetime type if not already
             df["date"] = pd.to_datetime(df["date"])
             df["year"] = df["date"].dt.year
-            # Calculate yearly TWR factor by multiplying monthly factors within each year
             yearly_twr_factor = df.groupby("year")["twr_factor"].prod()
-            # Calculate yearly percentage gain
             yearly_gain_percent = (yearly_twr_factor - 1) * 100
             return yearly_gain_percent
         except Exception as e:
@@ -686,17 +684,21 @@ def plot_yearly_twr_bars(
                 print(f"Error calculating yearly TWR for {name}: {e}", file=sys.stderr)
             return None
 
-    portfolio_yearly = calculate_yearly_twr(df_portfolio, "Portfolio")
-    benchmark_yearly = calculate_yearly_twr(
-        df_benchmark, f"Benchmark ({benchmark_ticker})"
-    )
-
-    # Combine results into a single DataFrame for plotting
     combined_df = pd.DataFrame()
+    portfolio_yearly = calculate_yearly_twr(df_portfolio, "Portfolio")
     if portfolio_yearly is not None:
         combined_df["Portfolio"] = portfolio_yearly
-    if benchmark_yearly is not None:
-        combined_df[f"Benchmark ({benchmark_ticker})"] = benchmark_yearly
+
+    valid_benchmarks_data = []
+    for i, df_bm in enumerate(dfs_benchmark):
+        if df_bm is not None and not df_bm.empty:
+            ticker = benchmark_tickers[i]
+            benchmark_yearly = calculate_yearly_twr(df_bm, f"Benchmark ({ticker})")
+            if benchmark_yearly is not None:
+                combined_df[f"Benchmark ({ticker})"] = benchmark_yearly
+                valid_benchmarks_data.append(
+                    {"ticker": ticker, "data": benchmark_yearly}
+                )
 
     if combined_df.empty:
         ax.text(0.5, 0.5, "No yearly ROI data available", ha="center", va="center")
@@ -706,42 +708,69 @@ def plot_yearly_twr_bars(
         return ax
 
     # --- Bar Plot ---
-    years = combined_df.index
+    years = combined_df.index.unique()  # Ensure unique years
     n_years = len(years)
-    bar_width = 0.35  # Width of each bar
-    index = range(n_years)  # Use simple integer index for positioning
+    num_series = len(combined_df.columns)
 
-    # Calculate positions for portfolio and benchmark bars
-    pos_portfolio = [i - bar_width / 2 for i in index]
-    pos_benchmark = [i + bar_width / 2 for i in index]
+    # Define a color palette for benchmarks beyond the first one
+    # First benchmark uses lightgreen/salmon, subsequent ones cycle through this list
+    benchmark_color_palette = [
+        ("lightblue", "lightcoral"),
+        ("lightgray", "darksalmon"),
+        ("palegreen", "lightpink"),
+    ]
 
-    # Plot Portfolio Bars
-    if "Portfolio" in combined_df.columns:
-        portfolio_gains = combined_df["Portfolio"].values
-        portfolio_colors = ["green" if g >= 0 else "red" for g in portfolio_gains]
-        bars_portfolio = ax.bar(
-            pos_portfolio,
-            portfolio_gains,
+    # Adjust bar width and positions for multiple series
+    total_width_for_group = (
+        0.8  # Total width allocated for all bars in a group (for one year)
+    )
+    bar_width = total_width_for_group / num_series if num_series > 0 else 0
+
+    index = range(n_years)  # x-coordinates for the groups
+
+    for i, col_name in enumerate(combined_df.columns):
+        series_data = (
+            combined_df[col_name].reindex(years).fillna(0)
+        )  # Ensure all years are present
+        # Calculate position for each bar in the group
+        # Offset from the center of the group: (i - num_series / 2 + 0.5) * bar_width
+        positions = [
+            x - total_width_for_group / 2 + (i + 0.5) * bar_width for x in index
+        ]
+
+        gains = series_data.values
+
+        if col_name == "Portfolio":
+            colors = ["green" if g >= 0 else "red" for g in gains]
+            label = "Portfolio"
+        else:  # Benchmark
+            # Extract ticker for consistent labeling
+            ticker_match = re.search(r"Benchmark \((.*?)\)", col_name)
+            ticker_label = ticker_match.group(1) if ticker_match else col_name
+
+            # Determine which benchmark this is for color selection
+            bm_index = -1
+            for bm_idx, bm_data in enumerate(valid_benchmarks_data):
+                if bm_data["ticker"] == ticker_label:
+                    bm_index = bm_idx
+                    break
+
+            if bm_index == 0:  # First benchmark
+                colors = ["lightgreen" if g >= 0 else "salmon" for g in gains]
+            else:  # Subsequent benchmarks
+                color_pair_idx = (bm_index - 1) % len(benchmark_color_palette)
+                positive_color, negative_color = benchmark_color_palette[color_pair_idx]
+                colors = [positive_color if g >= 0 else negative_color for g in gains]
+            label = f"Benchmark ({ticker_label})"
+
+        bars = ax.bar(
+            positions,
+            gains,
             bar_width,
-            label="Portfolio",
-            color=portfolio_colors,
+            label=label,
+            color=colors,
         )
-        ax.bar_label(bars_portfolio, fmt="%.1f%%", padding=3, fontsize=8)
-
-    # Plot Benchmark Bars
-    if f"Benchmark ({benchmark_ticker})" in combined_df.columns:
-        benchmark_gains = combined_df[f"Benchmark ({benchmark_ticker})"].values
-        benchmark_colors = [
-            "lightgreen" if g >= 0 else "salmon" for g in benchmark_gains
-        ]  # Lighter colors for benchmark
-        bars_benchmark = ax.bar(
-            pos_benchmark,
-            benchmark_gains,
-            bar_width,
-            label=f"Benchmark ({benchmark_ticker})",
-            color=benchmark_colors,
-        )
-        ax.bar_label(bars_benchmark, fmt="%.1f%%", padding=3, fontsize=8)
+        ax.bar_label(bars, fmt="%.1f%%", padding=3, fontsize=8)
 
     # --- Final Figure Adjustments ---
     ax.set_ylabel("Yearly TWR (%)")
@@ -751,32 +780,40 @@ def plot_yearly_twr_bars(
     # Create year labels, handling YTD for the last year if applicable
     year_labels = []
     current_year = datetime.datetime.now().year
-    last_data_date_portfolio = (
-        df_portfolio["date"].max() if df_portfolio is not None else None
+    last_data_dates = (
+        [df_portfolio["date"].max()]
+        if df_portfolio is not None and not df_portfolio.empty
+        else []
     )
-    last_data_date_benchmark = (
-        df_benchmark["date"].max() if df_benchmark is not None else None
-    )
-    # Use the latest date from either portfolio or benchmark if available
-    last_data_date = max(
-        filter(None, [last_data_date_portfolio, last_data_date_benchmark]), default=None
-    )
+    for df_bm in dfs_benchmark:
+        if df_bm is not None and not df_bm.empty:
+            last_data_dates.append(df_bm["date"].max())
 
-    for year in years:
+    last_data_date = max(filter(None, last_data_dates), default=None)
+
+    year_labels = []
+    current_year = datetime.datetime.now().year
+    # Ensure 'years' (from combined_df.index) is sorted if it's not already
+    sorted_years = sorted(list(years))
+
+    for year_val in sorted_years:  # Iterate over sorted unique years from data
         is_ytd = False
         if (
             last_data_date
-            and year == current_year
+            and year_val == current_year
             and (
                 last_data_date.month < 12
                 or (last_data_date.month == 12 and last_data_date.day < 31)
             )
         ):
-            year_labels.append(f"{year}\n(YTD)")
+            year_labels.append(f"{year_val}\n(YTD)")
         else:
-            year_labels.append(str(year))
+            year_labels.append(str(year_val))
 
-    ax.set_xticklabels(year_labels)
+    ax.set_xticks(
+        index
+    )  # Set tick positions based on the original integer index for groups
+    ax.set_xticklabels(year_labels)  # Apply the generated year labels
     ax.axhline(0, color="grey", linewidth=0.8, linestyle="--")  # Zero line
     ax.legend()
 
@@ -788,18 +825,17 @@ def get_roi_data(
     data_dir: str,
     target_currency: str,
     conversion_args: list[str],
-    benchmark_ticker: str = "^spx",
+    benchmark_tickers: list[str],
     roi_investment_account: str = "investments",
     roi_pnl_account: str = "unrealized",
-    roi_begin_date: str | None = None,  # Add begin date parameter
+    roi_begin_date: str | None = None,
     verbose: int = 0,
-) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
-    """Fetch and parse ROI data for portfolio and benchmark."""
+) -> tuple[pd.DataFrame | None, list[pd.DataFrame | None]]:
+    """Fetch and parse ROI data for portfolio and multiple benchmarks."""
     if verbose >= 1:
-        print(f"Fetching ROI data comparing with benchmark '{benchmark_ticker}'...")
+        print(f"Fetching ROI data, comparing with benchmarks: {benchmark_tickers}...")
 
     # --- Common hledger roi arguments ---
-    # Use specified investment and PnL accounts
     base_roi_args = [
         "roi",
         "--investment",
@@ -848,155 +884,210 @@ def get_roi_data(
         if verbose >= 1:
             print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
 
-    # --- 2. Benchmark ROI ---
-    benchmark_roi_ascii: str | None = None
-    df_benchmark: pd.DataFrame | None = None
-    benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
+    # --- 2. Benchmarks ROI ---
+    dfs_benchmark: list[pd.DataFrame | None] = []
+    first_trans_date: datetime.date | None = None
 
-    if not os.path.exists(benchmark_data_file):
-        print(
-            f"Error: Benchmark data file not found: {benchmark_data_file}",
-            file=sys.stderr,
-        )
-        print(
-            f"Please generate it first using: python -m investory.values --commodity {benchmark_ticker} --output-dir {data_dir}",
-            file=sys.stderr,
-        )
-    else:
-        try:
-            # Get ledger start date from 'hledger stats' output
-            stats_output = run_command(
-                f"hledger -f {ledger_file} stats", verbose=verbose
+    # Get ledger start date once, used for all benchmarks
+    try:
+        stats_output = run_command(f"hledger -f {ledger_file} stats", verbose=verbose)
+        first_trans_date_str = None
+        for line in stats_output.splitlines():
+            if line.strip().startswith("Transactions span") or line.strip().startswith(
+                "Date range"
+            ):
+                date_part = line.split(":", 1)[1].strip()
+                first_trans_date_str = date_part.split(" to ")[0].strip()
+                break
+        if not first_trans_date_str:
+            raise ValueError(
+                "Could not parse first transaction date from hledger stats."
             )
-            first_trans_date_str = None
-            for line in stats_output.splitlines():
-                # Handle different hledger versions/outputs for date span
-                if line.strip().startswith(
-                    "Transactions span"
-                ) or line.strip().startswith("Date range"):
-                    # Extract the part after the colon, strip whitespace
-                    date_part = line.split(":", 1)[1].strip()
-                    # Extract the first date before " to "
-                    first_trans_date_str = date_part.split(" to ")[0].strip()
-                    break  # Found the line, no need to continue
-
-            if not first_trans_date_str:
-                raise ValueError(
-                    "Could not parse first transaction date from hledger stats output."
-                )
-
-            if verbose >= 2:
-                print(
-                    f"Extracted first transaction date string: {first_trans_date_str}"
-                )
-
-            first_trans_date = datetime.datetime.strptime(
-                first_trans_date_str, "%Y-%m-%d"  # Assuming YYYY-MM-DD format
-            ).date()
-            # Fetch benchmark price around the start date
-            ticker = yq.Ticker(benchmark_ticker)
-            # Fetch slightly before to ensure we get a price if start date was holiday/weekend
-            hist = ticker.history(
-                start=first_trans_date - datetime.timedelta(days=5),
-                end=first_trans_date + datetime.timedelta(days=1),
+        if verbose >= 2:
+            print(f"Extracted first transaction date string: {first_trans_date_str}")
+        first_trans_date = datetime.datetime.strptime(
+            first_trans_date_str, "%Y-%m-%d"
+        ).date()
+    except (subprocess.CalledProcessError, ValueError) as e:
+        if verbose >= 1:
+            print(
+                f"Warning: Could not determine ledger start date: {e}", file=sys.stderr
             )
-            if hist.empty:
-                raise ValueError(
-                    f"Could not fetch initial price for benchmark {benchmark_ticker} around {first_trans_date}"
-                )
-            # Use 'open' price on the first available day in the fetched history
-            initial_price = hist["open"].iloc[0]
-            initial_price_date = hist.index.get_level_values("date")[
-                0
-            ]  # Get the actual date of the price
+        # If we can't get first_trans_date, we can't proceed with benchmark ROI that needs initial price
+        # So, append None for all benchmarks and return
+        for _ in benchmark_tickers:
+            dfs_benchmark.append(None)
+        return df_portfolio, dfs_benchmark
 
-            # Create temporary ledger for benchmark initial purchase
-            # Use target_currency for the price. Assumes benchmark is priced in target currency.
-            # This might be incorrect if benchmark (e.g. ^STOXX) is EUR but target is USD.
-            # For simplicity, assume benchmark price file and target currency align for now.
-            temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {target_currency}{initial_price:.2f}\n    assets:cash\n"
+    for benchmark_ticker in benchmark_tickers:
+        df_single_benchmark: pd.DataFrame | None = None
+        benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
 
-            # Run hledger roi for benchmark using temp ledger via stdin and benchmark data file
-            benchmark_command = (
-                f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)}"
-            )
-            benchmark_roi_ascii = run_command(
-                benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
-            )
-
-            df_benchmark = parse_hledger_roi_ascii(
-                benchmark_roi_ascii, verbose
-            )  # Use ASCII parser
-
-        except (
-            subprocess.CalledProcessError,
-            IOError,
-            ValueError,
-            # yq.exceptions.YahooQueryError, # This needs fixing too, see separate issue
-        ) as e:
+        if not os.path.exists(benchmark_data_file):
             if verbose >= 1:
                 print(
-                    f"Error getting or parsing benchmark ROI for {benchmark_ticker}: {e}",
+                    f"Benchmark data file not found: {benchmark_data_file}",
+                    file=sys.stderr,
+                )
+                print(
+                    f"Attempting to generate it using: python -m investory.values --commodity {benchmark_ticker} --output-dir {data_dir}",
+                    file=sys.stderr,
+                )
+            try:
+                generation_command = [
+                    sys.executable,
+                    "-m",
+                    "investory.values",
+                    "--commodity",
+                    benchmark_ticker,
+                    "--output-dir",
+                    data_dir,
+                ]
+                if (
+                    verbose >= 2
+                ):  # Pass verbosity to submodule if it supports it, or just for logging here
+                    print(f"Running command: {' '.join(generation_command)}")
+
+                process = subprocess.run(
+                    generation_command,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    encoding="utf-8",
+                )
+                if process.returncode != 0:
+                    print(
+                        f"Error generating benchmark data for {benchmark_ticker}:",
+                        file=sys.stderr,
+                    )
+                    if process.stdout:
+                        print(f"Stdout: {process.stdout.strip()}", file=sys.stderr)
+                    if process.stderr:
+                        print(f"Stderr: {process.stderr.strip()}", file=sys.stderr)
+                elif verbose >= 1:
+                    print(
+                        f"Successfully generated/updated data for {benchmark_ticker} in {data_dir}"
+                    )
+            except Exception as e:
+                print(
+                    f"Failed to execute investory.values for {benchmark_ticker}: {e}",
                     file=sys.stderr,
                 )
 
-    return df_portfolio, df_benchmark
+        if os.path.exists(benchmark_data_file):
+            try:
+                # Fetch benchmark price around the start date (first_trans_date is already fetched)
+                ticker = yq.Ticker(benchmark_ticker)
+                hist = ticker.history(
+                    start=first_trans_date - datetime.timedelta(days=5),
+                    end=first_trans_date + datetime.timedelta(days=1),
+                )
+                if hist.empty:
+                    raise ValueError(
+                        f"Could not fetch initial price for benchmark {benchmark_ticker} around {first_trans_date}"
+                    )
+                initial_price = hist["open"].iloc[0]
+                initial_price_date = hist.index.get_level_values("date")[0]
+
+                temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {target_currency}{initial_price:.2f}\n    assets:cash\n"
+                benchmark_command = (
+                    f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)}"
+                )
+                benchmark_roi_ascii = run_command(
+                    benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
+                )
+                df_single_benchmark = parse_hledger_roi_ascii(
+                    benchmark_roi_ascii, verbose
+                )
+            except (
+                subprocess.CalledProcessError,
+                IOError,
+                ValueError,
+                # yq.exceptions.YahooQueryError,
+            ) as e:
+                if verbose >= 1:
+                    print(
+                        f"Error getting or parsing benchmark ROI for {benchmark_ticker}: {e}",
+                        file=sys.stderr,
+                    )
+                df_single_benchmark = None
+        else:
+            if verbose >= 1:
+                print(
+                    f"Benchmark data file still not found for {benchmark_ticker} after generation attempt.",
+                    file=sys.stderr,
+                )
+            df_single_benchmark = None
+
+        dfs_benchmark.append(df_single_benchmark)
+
+    return df_portfolio, dfs_benchmark
 
 
 def plot_roi_comparison(
     ax: matplotlib.axes.Axes,
     df_portfolio: pd.DataFrame | None,
-    df_benchmark: pd.DataFrame | None,
-    benchmark_ticker: str = "^spx",
+    dfs_benchmark: list[pd.DataFrame | None],
+    benchmark_tickers: list[str],
     verbose: int = 0,
 ) -> matplotlib.axes.Axes:
     """Plot cumulative TWR comparison line chart on the given axes."""
     if verbose >= 1:
         print("Plotting cumulative TWR comparison lines...")
 
-    ax_line = ax  # Use the passed axes directly
+    ax_line = ax
 
-    if df_portfolio is not None or df_benchmark is not None:
-        # --- Line Plot (Primary Y-Axis - Left, on ax_line) ---
+    # Define a color palette for benchmarks
+    benchmark_colors = plt.cm.get_cmap(
+        "viridis", len(benchmark_tickers) if benchmark_tickers else 1
+    )
+
+    has_data = False
+    if df_portfolio is not None and not df_portfolio.empty:
+        has_data = True
         portfolio_label = "Portfolio Cumulative TWR"
-        benchmark_label = f"Benchmark ({benchmark_ticker}) Cumulative TWR"
-
-        if df_portfolio is not None:
-            portfolio_cum_twr = df_portfolio["twr_factor"].cumprod()
-            ax_line.plot(
-                df_portfolio["date"],
-                portfolio_cum_twr,
-                label=portfolio_label,
-                linewidth=1,  # Thicker line
-                color="black",  # Black color
+        portfolio_cum_twr = df_portfolio["twr_factor"].cumprod()
+        ax_line.plot(
+            df_portfolio["date"],
+            portfolio_cum_twr,
+            label=portfolio_label,
+            linewidth=1.5,  # Slightly thicker for portfolio
+            color="black",
+        )
+        if not portfolio_cum_twr.empty:
+            final_twr_factor = portfolio_cum_twr.iloc[-1]
+            total_gain_percent = (final_twr_factor - 1) * 100
+            last_date = df_portfolio["date"].iloc[-1]
+            text_y_position = final_twr_factor * 1.02
+            ax_line.text(
+                last_date,
+                text_y_position,
+                f"Total: {total_gain_percent:+.1f}%",
+                fontsize=9,
+                color="black",
+                ha="right",
+                va="bottom",
             )
-            # Calculate and add total gain text
-            if not portfolio_cum_twr.empty:
-                final_twr_factor = portfolio_cum_twr.iloc[-1]
-                total_gain_percent = (final_twr_factor - 1) * 100
-                last_date = df_portfolio["date"].iloc[-1]
-                # Position text slightly above the last point
-                text_y_position = final_twr_factor * 1.02  # Adjust multiplier as needed
-                ax_line.text(
-                    last_date,
-                    text_y_position,
-                    f"Total: {total_gain_percent:+.1f}%",
-                    fontsize=9,
-                    color="black",
-                    ha="right",  # Align text to the right of the date point
-                    va="bottom",  # Position text above the y-coordinate
-                )
 
-        if df_benchmark is not None:
-            benchmark_cum_twr = df_benchmark["twr_factor"].cumprod()
+    for i, df_bm in enumerate(dfs_benchmark):
+        if df_bm is not None and not df_bm.empty:
+            has_data = True
+            ticker = benchmark_tickers[i]
+            benchmark_label = f"Benchmark ({ticker}) Cumulative TWR"
+            benchmark_cum_twr = df_bm["twr_factor"].cumprod()
             ax_line.plot(
-                df_benchmark["date"],
+                df_bm["date"],
                 benchmark_cum_twr,
                 label=benchmark_label,
-                color="orange",  # Orange color
-                linewidth=1,  # Thinner line
+                color=(
+                    benchmark_colors(i / len(benchmark_tickers))
+                    if len(benchmark_tickers) > 0
+                    else "orange"
+                ),  # Cycle through colormap
+                linewidth=1,
             )
 
+    if has_data:
         ax_line.set_xlabel("Date")
         ax_line.set_ylabel("Cumulative TWR (Factor)")
         ax_line.tick_params(axis="y")  # Use default color
@@ -1017,44 +1108,46 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
     data_dir: str,
     target_currency: str,
     conversion_args: list[str],
-    output_dir: str,  # Still needed for the plot file path
-    benchmark_ticker: str = "^spx",
+    output_dir: str,
+    benchmark_tickers: list[str],  # Changed
+    roi_investment_account: str = "investments",  # Added for consistency with get_roi_data
+    roi_pnl_account: str = "unrealized",  # Added
+    roi_begin_date: str | None = None,  # Added
     verbose: int = 0,
 ):
     """Generate standalone ROI comparison plot (Deprecated, use generate_combined_figure)."""
-    # This function now primarily orchestrates data fetching and plotting for a standalone file.
-    # The core plotting logic is in plot_roi_comparison and plot_yearly_twr_bars.
-
     if verbose >= 1:
         print(
             "Warning: generate_roi_report is deprecated. Use generate_combined_figure for integrated plots."
         )
 
     # 1. Get Data
-    df_portfolio, df_benchmark = get_roi_data(
+    df_portfolio, dfs_benchmark = get_roi_data(
         ledger_file,
         data_dir,
         target_currency,
         conversion_args,
-        benchmark_ticker,
-        verbose,
+        benchmark_tickers,  # Pass list
+        roi_investment_account,
+        roi_pnl_account,
+        roi_begin_date,
+        verbose=verbose,  # Ensure verbose is passed correctly
     )
 
-    # 2. Plot Data (if any exists) - Create two subplots for standalone version
-    if df_portfolio is not None or df_benchmark is not None:
-        # Create a figure with two subplots vertically stacked
-        fig, (ax_line, ax_bar) = plt.subplots(
-            2, 1, figsize=(9, 7), sharex=False
-        )  # Taller figure, don't share x
+    # 2. Plot Data (if any exists)
+    # Check if there's any portfolio data or any valid benchmark data
+    has_any_benchmark_data = any(
+        df is not None and not df.empty for df in dfs_benchmark
+    )
+    if (df_portfolio is not None and not df_portfolio.empty) or has_any_benchmark_data:
+        fig, (ax_line, ax_bar) = plt.subplots(2, 1, figsize=(9, 7), sharex=False)
 
-        # Plot cumulative lines on the top axes
         plot_roi_comparison(
-            ax_line, df_portfolio, df_benchmark, benchmark_ticker, verbose
+            ax_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
         )
 
-        # Plot yearly bars on the bottom axes
         plot_yearly_twr_bars(
-            ax_bar, df_portfolio, df_benchmark, benchmark_ticker, verbose
+            ax_bar, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
         )
 
         # --- Final Figure Adjustments for Standalone Plot ---
@@ -1111,10 +1204,10 @@ def generate_combined_figure(
     target_currency: str,
     conversion_args: list[str],
     output_dir: str,
-    benchmark_ticker: str = "^spx",
+    benchmark_tickers: list[str],  # Changed
     roi_investment_account: str = "investments",
     roi_pnl_account: str = "unrealized",
-    roi_begin_date: str | None = None,  # Add begin date parameter
+    roi_begin_date: str | None = None,
     verbose: int = 0,
 ):
     """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
@@ -1171,17 +1264,17 @@ def generate_combined_figure(
         ax_evol.set_title("Asset Evolution")  # Still add title
 
     # --- Get ROI Data (needed for both bottom plots) ---
-    df_portfolio, df_benchmark = None, None  # Initialize
+    df_portfolio, dfs_benchmark = None, []  # Initialize
     try:
-        df_portfolio, df_benchmark = get_roi_data(
+        df_portfolio, dfs_benchmark = get_roi_data(
             ledger_file,
             data_dir,
             target_currency,
             conversion_args,
-            benchmark_ticker,
+            benchmark_tickers,  # Pass list
             roi_investment_account,
             roi_pnl_account,
-            roi_begin_date,  # Pass begin date
+            roi_begin_date,
             verbose,
         )
     except Exception as e:
@@ -1199,7 +1292,7 @@ def generate_combined_figure(
     # --- Plot Cumulative ROI Comparison (Bottom-Left) ---
     try:
         plot_roi_comparison(
-            ax_roi_line, df_portfolio, df_benchmark, benchmark_ticker, verbose
+            ax_roi_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
         )
     except Exception as e:
         print(f"Error generating cumulative ROI line plot: {e}", file=sys.stderr)
@@ -1211,7 +1304,7 @@ def generate_combined_figure(
     # --- Plot Yearly TWR Bars (Bottom-Right) ---
     try:
         plot_yearly_twr_bars(
-            ax_roi_bars, df_portfolio, df_benchmark, benchmark_ticker, verbose
+            ax_roi_bars, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
         )
     except Exception as e:
         print(f"Error generating yearly TWR bar plot: {e}", file=sys.stderr)
@@ -1276,10 +1369,11 @@ if __name__ == "__main__":
     )
     _ = parser.add_argument(
         "--benchmark-ticker",
-        help="Yahoo Finance ticker for ROI benchmark (used in combined figure)",
+        help="Yahoo Finance ticker(s) for ROI benchmark (e.g., ^spx ^bvsp). Used in combined figure.",
         required=False,
         type=str,
-        default="^spx",  # Default to S&P 500
+        nargs="+",  # Accept one or more tickers
+        default=["^spx"],  # Default to S&P 500 as a list
     )
     _ = parser.add_argument(
         "--roi-investment-account",
@@ -1388,10 +1482,10 @@ if __name__ == "__main__":
         target_currency=args.currency,
         conversion_args=conversion_args,
         output_dir=args.output_dir,
-        benchmark_ticker=args.benchmark_ticker,
+        benchmark_tickers=args.benchmark_ticker,  # Pass list of tickers
         roi_investment_account=args.roi_investment_account,
         roi_pnl_account=args.roi_pnl_account,
-        roi_begin_date=args.roi_begin_date,  # Pass begin date
+        roi_begin_date=args.roi_begin_date,
         verbose=args.verbose,
     )
 
