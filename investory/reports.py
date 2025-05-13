@@ -1131,7 +1131,7 @@ def generate_combined_figure(
     # Row 1: Asset Distribution (col 0), Yearly TWR (col 1)
     # Row 2: Cumulative TWR (spans 2 cols)
     # Adjust height/width ratios for desired emphasis
-    gs = fig.add_gridspec(3, 2, height_ratios=[1.5, 1, 1], width_ratios=[1, 1.2])
+    gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1], width_ratios=[1, 1.2])
 
     ax_evol = fig.add_subplot(gs[0, :])  # Top row, spans both columns
     ax_dist = fig.add_subplot(gs[1, 0])  # Middle row, left column
