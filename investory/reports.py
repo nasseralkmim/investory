@@ -499,13 +499,13 @@ def generate_yearly_report(
         f"echo -en '* Summary balance sheet last three years\n' > {bs_report_file}",  # Start new file
         f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
         f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} >> {bs_report_file}",  # Added target_currency to --value=end
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} --color=no >> {bs_report_file}",  # Added target_currency to --value=end
         # Cost basis section
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
         # This first part gets historical cost in original currency (no conversion/data files needed)
         f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
         # This second part applies conversion. Add {conv_args_str}, {data_files_args_str}, use {target_currency}
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL --historical investments --period {period} --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL --historical investments --period {period} --pretty=no --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 --color=no | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
         f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> {bs_report_file}",
         f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {bs_report_file}",
         f"rm {bs1_temp_file} {bs2_temp_file}",
@@ -1207,10 +1207,13 @@ def generate_combined_figure(
     roi_pnl_account: str = "unrealized",
     roi_begin_date: str | None = None,
     verbose: int = 0,
+    enable_roi_plots: bool = True,
 ):
     """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
     if verbose >= 1:
         print("Generating combined overview figure...")
+        if not enable_roi_plots:
+            print("ROI plot generation is disabled.")
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
@@ -1263,53 +1266,75 @@ def generate_combined_figure(
 
     # --- Get ROI Data (needed for both bottom plots) ---
     df_portfolio, dfs_benchmark = None, []  # Initialize
-    try:
-        df_portfolio, dfs_benchmark = get_roi_data(
-            ledger_file,
-            data_dir,
-            target_currency,
-            conversion_args,
-            benchmark_tickers,  # Pass list
-            roi_investment_account,
-            roi_pnl_account,
-            roi_begin_date,
-            verbose,
-        )
-    except Exception as e:
-        print(f"Error getting ROI data: {e}", file=sys.stderr)
-        # Add error text to both ROI plots if data fetching fails
+    if enable_roi_plots:
+        try:
+            df_portfolio, dfs_benchmark = get_roi_data(
+                ledger_file,
+                data_dir,
+                target_currency,
+                conversion_args,
+                benchmark_tickers,  # Pass list
+                roi_investment_account,
+                roi_pnl_account,
+                roi_begin_date,
+                verbose,
+            )
+        except Exception as e:
+            print(f"Error getting ROI data: {e}", file=sys.stderr)
+            # Add error text to both ROI plots if data fetching fails
+            ax_roi_line.text(
+                0.5,
+                0.5,
+                "Error getting ROI data",
+                ha="center",
+                va="center",
+                color="red",
+            )
+            ax_roi_bars.text(
+                0.5,
+                0.5,
+                "Error getting ROI data",
+                ha="center",
+                va="center",
+                color="red",
+            )
+            ax_roi_line.set_title("Cumulative Performance")
+            ax_roi_bars.set_title("Yearly TWR Comparison")
+    else:
         ax_roi_line.text(
-            0.5, 0.5, "Error getting ROI data", ha="center", va="center", color="red"
-        )
-        ax_roi_bars.text(
-            0.5, 0.5, "Error getting ROI data", ha="center", va="center", color="red"
+            0.5, 0.5, "ROI reporting disabled.", ha="center", va="center", color="grey"
         )
         ax_roi_line.set_title("Cumulative Performance")
+        ax_roi_bars.text(
+            0.5, 0.5, "ROI reporting disabled.", ha="center", va="center", color="grey"
+        )
         ax_roi_bars.set_title("Yearly TWR Comparison")
 
     # --- Plot Cumulative ROI Comparison (Bottom-Left) ---
-    try:
-        plot_roi_comparison(
-            ax_roi_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
-        )
-    except Exception as e:
-        print(f"Error generating cumulative ROI line plot: {e}", file=sys.stderr)
-        ax_roi_line.text(
-            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
-        )
-        ax_roi_line.set_title("Cumulative Performance")  # Still add title
+    if enable_roi_plots:
+        try:
+            plot_roi_comparison(
+                ax_roi_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
+            )
+        except Exception as e:
+            print(f"Error generating cumulative ROI line plot: {e}", file=sys.stderr)
+            ax_roi_line.text(
+                0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+            )
+            ax_roi_line.set_title("Cumulative Performance")  # Still add title
 
     # --- Plot Yearly TWR Bars (Bottom-Right) ---
-    try:
-        plot_yearly_twr_bars(
-            ax_roi_bars, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
-        )
-    except Exception as e:
-        print(f"Error generating yearly TWR bar plot: {e}", file=sys.stderr)
-        ax_roi_bars.text(
-            0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
-        )
-        ax_roi_bars.set_title("Yearly TWR Comparison")  # Still add title
+    if enable_roi_plots:
+        try:
+            plot_yearly_twr_bars(
+                ax_roi_bars, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
+            )
+        except Exception as e:
+            print(f"Error generating yearly TWR bar plot: {e}", file=sys.stderr)
+            ax_roi_bars.text(
+                0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
+            )
+            ax_roi_bars.set_title("Yearly TWR Comparison")  # Still add title
 
     # --- Final Figure Adjustments ---
     fig.suptitle("Portfolio Overview", fontsize=14)  # Slightly larger title
@@ -1393,6 +1418,12 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
+    )
+    _ = parser.add_argument(
+        "--roi-report",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable or disable ROI report generation (default: enabled). Use --roi-report or --no-roi-report.",
     )
     _ = parser.add_argument(
         "-v",
@@ -1485,6 +1516,7 @@ if __name__ == "__main__":
         roi_pnl_account=args.roi_pnl_account,
         roi_begin_date=args.roi_begin_date,
         verbose=args.verbose,
+        enable_roi_plots=args.roi_report,
     )
 
     if args.verbose >= 1:
