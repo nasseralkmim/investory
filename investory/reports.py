@@ -497,10 +497,8 @@ def generate_yearly_report(
         f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
         # Balance sheet (needs currency conversion)
         f"echo -en '* Summary balance sheet last three years\n' > {bs_report_file}",  # Start new file
-        # Add {conv_args_str}, {data_files_args_str}, use {target_currency}
         f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
         f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
-        # Add {conv_args_str}, {data_files_args_str}, use {target_currency}
         f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} >> {bs_report_file}",  # Added target_currency to --value=end
         # Cost basis section
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
