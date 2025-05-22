@@ -193,25 +193,21 @@ def generate_asset_distribution_graph(
     )  # Use target_currency and escape it
     df["balance"] = pd.to_numeric(
         df["balance"]
-    )  # pyright ignore[reportUnknownMemberType]
+    )
 
     # Avoid problems with negative values
     negative_filter: pd.Series = (
         df["balance"] < 0
-    )  # pyright: ignore[reportMissingTypeArgument]
+    )
     negative_df: pd.DataFrame = df[
         negative_filter
-    ].copy()  # pyright ignore[reportAssignmentType]
-    df_positive: pd.DataFrame = df[~negative_filter]  # type: ignore
+    ].copy()
+    df_positive: pd.DataFrame = df[~negative_filter] 
 
     account_to_color = get_account_colors(ledger)
     colors: list[str] = [
         account_to_color[account] for account in df_positive["account"]
-    ]  # pyright: ignore[reportUnknownVariableType]
-
-    # fig: matplotlib.figure.Figure # Removed: Use passed ax
-    # ax: matplotlib.axes.Axes # Removed: Use passed ax
-    # fig, ax = plt.subplots(figsize=(3, 3))  # Removed: Use passed ax
+    ]
 
     if df_positive.empty:
         _ = ax.set_xlim(0, 1)  # Use passed ax
@@ -236,14 +232,14 @@ def generate_asset_distribution_graph(
         _ = ax.set_title("Asset Distribution")
 
         # Add legend to the side
-        ax.legend(
-            wedges,
-            df_positive["account"],
-            title="Accounts",
-            loc="center left",
-            bbox_to_anchor=(1, 0, 0.5, 1),  # Position legend outside plot area
-            fontsize="small",  # Adjust font size if needed
-        )
+        # ax.legend(
+        #     wedges,
+        #     df_positive["account"],
+        #     title="Accounts",
+        #     loc="center left",
+        #     bbox_to_anchor=(1, 0, 0.5, 1),  # Position legend outside plot area
+        #     fontsize="small",  # Adjust font size if needed
+        # )
 
         # display negative values as information text
         if not negative_df.empty:
@@ -263,15 +259,6 @@ def generate_asset_distribution_graph(
                     fontsize=12,
                 )
 
-    # Removed saving logic
-    # plot_dir = "reports"
-    # if period != 0:
-    #     plot_dir = f"reports/{period}"
-    # fig.savefig(
-    #     f"{plot_dir}/asset-distribution.svg",
-    #     bbox_inches="tight",
-    #     transparent=True,
-    # )
     return ax  # Return the axes
 
 
@@ -380,12 +367,13 @@ def generate_asset_evolution_graph(
         _ = ax.set_ylabel(
             f"Value ({target_currency})"
         )  # Add Y-axis label with currency
-    # Removed saving logic
-    # fig.savefig(
-    #     f"{plot_dir}/asset-evolution.svg",
-    #     bbox_inches="tight",
-    #     transparent=True,
-    # )
+
+    ax.legend(
+        title="Accounts",
+        # loc="center left",
+        # bbox_to_anchor=(1, 0, 0.5, 1),  # Position legend outside plot area
+        fontsize="small"
+    )
     return ax  # Return the axes
 
 
@@ -483,8 +471,6 @@ def generate_yearly_report(
     bs1_temp_file = os.path.join(report_dir, f"bs1-{period}.org")
     bs2_temp_file = os.path.join(report_dir, f"bs2-{period}.org")
 
-    # Note: Removed references to monthly-in-{period}.svg, asset-evolution.svg, asset-distribution.svg
-    # Consider adding a reference to the main combined-overview.svg if desired, or keep yearly reports text-only.
     commands = [
         # Income statement
         f"echo -en '* Summary income statement\n' > {is_report_file}",  # Start new file
@@ -503,9 +489,9 @@ def generate_yearly_report(
         # Cost basis section
         f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
         # This first part gets historical cost in original currency (no conversion/data files needed)
-        f"hledger -f {ledger} bal type:AL --historical investments --period {period} --layout tall --tree --pretty=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
+        f"hledger -f {ledger} bal type:AL investments --period 'to {period + 1}' --layout tall --tree --pretty=no --color=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
         # This second part applies conversion. Add {conv_args_str}, {data_files_args_str}, use {target_currency}
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL --historical investments --period {period} --pretty=no --infer-equity --cost --infer-cost --infer-market-prices --exchange={target_currency} --drop 3 --color=no | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
+        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL investments --period 'to {period + 1}' --pretty=no --infer-equity --cost --infer-cost --infer-market-prices --drop 3 --color=no | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
         f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> {bs_report_file}",
         f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {bs_report_file}",
         f"rm {bs1_temp_file} {bs2_temp_file}",
@@ -840,7 +826,6 @@ def get_roi_data(
         roi_investment_account,  # Use parameter
         "--profit-loss",
         roi_pnl_account,  # Use parameter
-        "--value=then,$",
         "--monthly",
         "--infer-market-prices",
         "--end",
@@ -871,7 +856,7 @@ def get_roi_data(
                     file=sys.stderr,
                 )
 
-        portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)}"
+        portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)} --value=then,$"
         portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
 
         df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose)
@@ -980,6 +965,11 @@ def get_roi_data(
                     start=first_trans_date - datetime.timedelta(days=5),
                     end=first_trans_date + datetime.timedelta(days=1),
                 )
+                benchmark_currency = ticker.price[benchmark_ticker].get("currencySymbol", "$")
+                if verbose >= 2:
+                    print(
+                        f"Benchmark {benchmark_ticker} currency: {benchmark_currency}"
+                    )
                 if hist.empty:
                     raise ValueError(
                         f"Could not fetch initial price for benchmark {benchmark_ticker} around {first_trans_date}"
@@ -987,9 +977,9 @@ def get_roi_data(
                 initial_price = hist["open"].iloc[0]
                 initial_price_date = hist.index.get_level_values("date")[0]
 
-                temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {target_currency}{initial_price:.2f}\n    assets:cash\n"
+                temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {benchmark_currency}{initial_price:.2f}\n    assets:cash\n"
                 benchmark_command = (
-                    f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)}"
+                    f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)} --value=then,{benchmark_currency}"
                 )
                 benchmark_roi_ascii = run_command(
                     benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
