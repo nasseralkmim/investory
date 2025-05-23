@@ -917,6 +917,9 @@ def get_roi_data(
                     file=sys.stderr,
                 )
             try:
+                ticker = yq.Ticker(benchmark_ticker)
+                benchmark_currency = ticker.price[benchmark_ticker].get("currencySymbol", "$")
+
                 generation_command = [
                     sys.executable,
                     "-m",
@@ -925,6 +928,10 @@ def get_roi_data(
                     benchmark_ticker,
                     "--output-dir",
                     data_dir,
+                    "--currency",
+                    benchmark_currency,
+                    "--begin",
+                    first_trans_date_str,
                 ]
                 if (
                     verbose >= 2
