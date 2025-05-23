@@ -873,37 +873,6 @@ def get_roi_data(
 
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
-    # --- 1. Portfolio ROI ---
-    portfolio_roi_ascii: str | None = None
-    df_portfolio: pd.DataFrame | None = None
-    try:
-        # Find all .ledger files in data_dir (commodity prices)
-        data_files_args = []
-        if os.path.isdir(data_dir):
-            data_files_args = [
-                f"-f {os.path.join(data_dir, f)}"
-                for f in os.listdir(data_dir)
-                if f.endswith(".ledger")
-            ]
-        else:
-            if verbose >= 1:
-                print(
-                    f"Warning: Data directory '{data_dir}' not found. Commodity prices might be missing.",
-                    file=sys.stderr,
-                )
-
-        portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)} --value=then,$"
-        portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
-
-        df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose)
-    except (
-        subprocess.CalledProcessError,
-        IOError,
-    ) as e:
-        if verbose >= 1:
-            print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
-
-    # --- 2. Benchmarks ROI ---
     dfs_benchmark: list[pd.DataFrame | None] = []
     first_trans_date: datetime.date | None = None
 
@@ -938,12 +907,43 @@ def get_roi_data(
             dfs_benchmark.append(None)
         return df_portfolio, dfs_benchmark
 
-    # Add begin date if specified
+    # Add begin date if specified else use first transaction from ledger
     if roi_begin_date:
         base_roi_args.extend(["--begin", roi_begin_date])
     else:
         base_roi_args.extend(["--begin", first_trans_date_str])
 
+    # --- 1. Portfolio ROI ---
+    portfolio_roi_ascii: str | None = None
+    df_portfolio: pd.DataFrame | None = None
+    try:
+        # Find all .ledger files in data_dir (commodity prices)
+        data_files_args = []
+        if os.path.isdir(data_dir):
+            data_files_args = [
+                f"-f {os.path.join(data_dir, f)}"
+                for f in os.listdir(data_dir)
+                if f.endswith(".ledger")
+            ]
+        else:
+            if verbose >= 1:
+                print(
+                    f"Warning: Data directory '{data_dir}' not found. Commodity prices might be missing.",
+                    file=sys.stderr,
+                )
+
+        portfolio_command = f"hledger -f {ledger_file} {' '.join(data_files_args)} {conv_args_str} {' '.join(base_roi_args)} --value=then,$"
+        portfolio_roi_ascii = run_command(portfolio_command, verbose=verbose)
+
+        df_portfolio = parse_hledger_roi_ascii(portfolio_roi_ascii, verbose)
+    except (
+        subprocess.CalledProcessError,
+        IOError,
+    ) as e:
+        if verbose >= 1:
+            print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
+
+    # --- 2. Benchmarks ROI ---
     for benchmark_ticker in benchmark_tickers:
         df_single_benchmark: pd.DataFrame | None = None
         benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
