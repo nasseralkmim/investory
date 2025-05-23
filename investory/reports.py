@@ -870,9 +870,6 @@ def get_roi_data(
         "--end",
         "today",
     ]
-    # Add begin date if specified
-    if roi_begin_date:
-        base_roi_args.extend(["--begin", roi_begin_date])
 
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
@@ -940,6 +937,12 @@ def get_roi_data(
         for _ in benchmark_tickers:
             dfs_benchmark.append(None)
         return df_portfolio, dfs_benchmark
+
+    # Add begin date if specified
+    if roi_begin_date:
+        base_roi_args.extend(["--begin", roi_begin_date])
+    else:
+        base_roi_args.extend(["--begin", first_trans_date_str])
 
     for benchmark_ticker in benchmark_tickers:
         df_single_benchmark: pd.DataFrame | None = None
