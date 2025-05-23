@@ -226,18 +226,12 @@ def generate_asset_distribution_graph(
     df = df.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    df["balance"] = pd.to_numeric(
-        df["balance"]
-    )
+    df["balance"] = pd.to_numeric(df["balance"])
 
     # Avoid problems with negative values
-    negative_filter: pd.Series = (
-        df["balance"] < 0
-    )
-    negative_df: pd.DataFrame = df[
-        negative_filter
-    ].copy()
-    df_positive: pd.DataFrame = df[~negative_filter] 
+    negative_filter: pd.Series = df["balance"] < 0
+    negative_df: pd.DataFrame = df[negative_filter].copy()
+    df_positive: pd.DataFrame = df[~negative_filter]
 
     account_to_color = get_account_colors(ledger)
     colors: list[str] = [
@@ -407,7 +401,7 @@ def generate_asset_evolution_graph(
         title="Accounts",
         # loc="center left",
         # bbox_to_anchor=(1, 0, 0.5, 1),  # Position legend outside plot area
-        fontsize="small"
+        fontsize="small",
     )
     return ax  # Return the axes
 
@@ -731,12 +725,13 @@ def plot_yearly_twr_bars(
     n_years = len(years)
     num_series = len(combined_df.columns)
 
-    # Define a color palette for benchmarks beyond the first one
-    # First benchmark uses lightgreen/salmon, subsequent ones cycle through this list
-    benchmark_color_palette = [
-        ("lightblue", "lightcoral"),
-        ("lightgray", "darksalmon"),
-        ("palegreen", "lightpink"),
+    # Define colors
+    PORTFOLIO_BAR_COLOR = "black"
+    BENCHMARK_COLORS = [
+        "C0",
+        "C1",
+        "C2",
+        "C3",
     ]
 
     # Adjust bar width and positions for multiple series
@@ -758,28 +753,23 @@ def plot_yearly_twr_bars(
         ]
 
         gains = series_data.values
+        bar_color: str
+        label: str
 
         if col_name == "Portfolio":
-            colors = ["green" if g >= 0 else "red" for g in gains]
+            bar_color = PORTFOLIO_BAR_COLOR
             label = "Portfolio"
         else:  # Benchmark
-            # Extract ticker for consistent labeling
             ticker_match = re.search(r"Benchmark \((.*?)\)", col_name)
             ticker_label = ticker_match.group(1) if ticker_match else col_name
 
-            # Determine which benchmark this is for color selection
             bm_index = -1
             for bm_idx, bm_data in enumerate(valid_benchmarks_data):
                 if bm_data["ticker"] == ticker_label:
                     bm_index = bm_idx
                     break
 
-            if bm_index == 0:  # First benchmark
-                colors = ["lightgreen" if g >= 0 else "salmon" for g in gains]
-            else:  # Subsequent benchmarks
-                color_pair_idx = (bm_index - 1) % len(benchmark_color_palette)
-                positive_color, negative_color = benchmark_color_palette[color_pair_idx]
-                colors = [positive_color if g >= 0 else negative_color for g in gains]
+            bar_color = BENCHMARK_COLORS[bm_index % len(BENCHMARK_COLORS)]
             label = f"Benchmark ({ticker_label})"
 
         bars = ax.bar(
@@ -787,9 +777,23 @@ def plot_yearly_twr_bars(
             gains,
             bar_width,
             label=label,
-            color=colors,
+            color=bar_color,
         )
-        ax.bar_label(bars, fmt="%.1f%%", padding=3, fontsize=8)
+
+        # Set label colors based on positive/negative values
+        label_colors = ["green" if g >= 0 else "red" for g in gains]
+        # Call bar_label without the color argument first
+        labels_list = ax.bar_label(bars, fmt="%.1f%%", padding=3, fontsize=8)
+
+        # Then, iterate through the returned labels and set their colors individually.
+        # This is more compatible with Matplotlib versions (e.g., 3.4.x)
+        # where passing a list directly to the 'color' argument of bar_label might not be supported
+        # or behave as expected. Matplotlib 3.5+ should handle a list directly.
+        if labels_list:  # Ensure there are labels to iterate over
+            for label_idx, label_item in enumerate(labels_list):
+                # Safety check, though len(labels_list) should equal len(label_colors)
+                if label_idx < len(label_colors):
+                    label_item.set_color(label_colors[label_idx])
 
     # --- Final Figure Adjustments ---
     ax.set_ylabel("Yearly TWR (%)")
@@ -953,7 +957,9 @@ def get_roi_data(
                 )
             try:
                 ticker = yq.Ticker(benchmark_ticker)
-                benchmark_currency = ticker.price[benchmark_ticker].get("currencySymbol", "$")
+                benchmark_currency = ticker.price[benchmark_ticker].get(
+                    "currencySymbol", "$"
+                )
 
                 generation_command = [
                     sys.executable,
@@ -1074,10 +1080,20 @@ def plot_roi_comparison(
 
     ax_line = ax
 
-    # Define a color palette for benchmarks
-    benchmark_colors = plt.cm.get_cmap(
-        "viridis", len(benchmark_tickers) if benchmark_tickers else 1
-    )
+    # Define colors and linestyles
+    PORTFOLIO_COLOR = "black"
+    BENCHMARK_COLORS = [
+        "C0",
+        "C1",
+        "C2",
+        "C3",
+    ]
+    BENCHMARK_LINESTYLES = [
+        "--",
+        "-.",
+        ":",
+        (0, (5, 3)),
+    ]  # Dashed, Dash-dot, Dotted, Custom Dash
 
     has_data = False
     if df_portfolio is not None and not df_portfolio.empty:
@@ -1088,8 +1104,9 @@ def plot_roi_comparison(
             df_portfolio["date"],
             portfolio_cum_twr,
             label=portfolio_label,
-            linewidth=1.5,  # Slightly thicker for portfolio
-            color="black",
+            linewidth=2.0,  # Thicker portfolio line
+            color=PORTFOLIO_COLOR,
+            linestyle="-",
         )
         if not portfolio_cum_twr.empty:
             final_twr_factor = portfolio_cum_twr.iloc[-1]
@@ -1112,16 +1129,15 @@ def plot_roi_comparison(
             ticker = benchmark_tickers[i]
             benchmark_label = f"Benchmark ({ticker})"
             benchmark_cum_twr = df_bm["twr_factor"].cumprod()
+            line_color = BENCHMARK_COLORS[i % len(BENCHMARK_COLORS)]
+            line_style = BENCHMARK_LINESTYLES[i % len(BENCHMARK_LINESTYLES)]
             ax_line.plot(
                 df_bm["date"],
                 benchmark_cum_twr,
                 label=benchmark_label,
-                color=(
-                    benchmark_colors(i / len(benchmark_tickers))
-                    if len(benchmark_tickers) > 0
-                    else "orange"
-                ),  # Cycle through colormap
-                linewidth=1,
+                color=line_color,
+                linestyle=line_style,
+                linewidth=1.0,
             )
 
     if has_data:
