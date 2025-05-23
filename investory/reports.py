@@ -98,6 +98,41 @@ def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     return currencies
 
 
+def _parse_hledger_price_amount(amount_str: str) -> tuple[float, str]:
+    """
+    Parses an hledger price amount string (e.g., "$123.45", "123.45 USD")
+    into a float value and currency string.
+    """
+    # Normalize by removing commas used as thousands separators
+    amount_str = amount_str.replace(",", "")
+
+    # Case 1: Currency symbol prefix, e.g., $123.45, €123.45
+    # Regex: currency symbols (common ones), optional whitespace, optional sign, value
+    match_prefix = re.match(r"([$€£¥R]+)\s*(-?[\d\.]+)", amount_str, re.UNICODE)
+    if match_prefix:
+        currency = match_prefix.group(1).strip()
+        value_str = match_prefix.group(2)
+        return float(value_str), currency
+
+    # Case 2: Currency code suffix, e.g., 123.45 USD, -10 EUR
+    # Regex: optional sign, value, optional whitespace, 3-letter currency code
+    match_suffix_code = re.match(r"(-?[\d\.]+)\s*([A-Z]{3})", amount_str)
+    if match_suffix_code:
+        value_str = match_suffix_code.group(1)
+        currency = match_suffix_code.group(2).strip()
+        return float(value_str), currency
+
+    # Case 3: Currency symbol suffix (less common but possible), e.g., 123.45$, 10€
+    # Regex: optional sign, value, optional whitespace, currency symbols
+    match_suffix_symbol = re.match(r"(-?[\d\.]+)\s*([$€£¥R]+)", amount_str, re.UNICODE)
+    if match_suffix_symbol:
+        value_str = match_suffix_symbol.group(1)
+        currency = match_suffix_symbol.group(2).strip()
+        return float(value_str), currency
+
+    raise ValueError(f"Could not parse hledger price amount string: '{amount_str}'")
+
+
 def find_conversion_files(
     target_currency_symbol: str,
     other_currency_symbols: set[str],
@@ -966,43 +1001,50 @@ def get_roi_data(
 
         if os.path.exists(benchmark_data_file):
             try:
-                # Fetch benchmark price around the start date (first_trans_date is already fetched)
-                ticker = yq.Ticker(benchmark_ticker)
-                hist = ticker.history(
-                    start=first_trans_date - datetime.timedelta(days=5),
-                    end=first_trans_date + datetime.timedelta(days=1),
+                # Get the earliest price from the benchmark data file
+                price_line_cmd = f"hledger -f {benchmark_data_file} prices {benchmark_ticker} | head -1"
+                earliest_price_line = run_command(price_line_cmd, verbose=verbose)
+
+                if not earliest_price_line.strip():
+                    raise ValueError(
+                        f"No price entries found for {benchmark_ticker} in {benchmark_data_file}"
+                    )
+
+                parts = earliest_price_line.split()
+                # Expected format: P YYYY-MM-DD TICKER $PRICE or P YYYY-MM-DD TICKER PRICE CURRENCY
+                if len(parts) < 4 or parts[0] != "P":
+                    raise ValueError(
+                        f"Unexpected format for price line from 'hledger prices': {earliest_price_line}"
+                    )
+
+                initial_price_date_str = parts[1]
+                initial_price_date = datetime.datetime.strptime(
+                    initial_price_date_str, "%Y-%m-%d"
+                ).date()
+
+                price_expression_str = " ".join(parts[3:])
+                initial_price, benchmark_currency = _parse_hledger_price_amount(
+                    price_expression_str
                 )
-                benchmark_currency = ticker.price[benchmark_ticker].get("currencySymbol", "$")
+
                 if verbose >= 2:
                     print(
-                        f"Benchmark {benchmark_ticker} currency: {benchmark_currency}"
+                        f"Using initial price for {benchmark_ticker} from {benchmark_data_file}: "
+                        f"{benchmark_currency}{initial_price:.2f} on {initial_price_date_str}"
                     )
-                if hist.empty:
-                    raise ValueError(
-                        f"Could not fetch initial price for benchmark {benchmark_ticker} around {first_trans_date}"
-                    )
-                initial_price = hist["open"].iloc[0]
-                initial_price_date = hist.index.get_level_values("date")[0]
 
                 temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {benchmark_currency}{initial_price:.2f}\n    assets:cash\n"
-                benchmark_command = (
-                    f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)} --value=then,{benchmark_currency}"
-                )
+                benchmark_command = f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)} --value=then,{benchmark_currency}"
                 benchmark_roi_ascii = run_command(
                     benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
                 )
                 df_single_benchmark = parse_hledger_roi_ascii(
                     benchmark_roi_ascii, verbose
                 )
-            except (
-                subprocess.CalledProcessError,
-                IOError,
-                ValueError,
-                # yq.exceptions.YahooQueryError,
-            ) as e:
+            except (subprocess.CalledProcessError, IOError, ValueError) as e:
                 if verbose >= 1:
                     print(
-                        f"Error getting or parsing benchmark ROI for {benchmark_ticker}: {e}",
+                        f"Error processing benchmark {benchmark_ticker} using its data file: {e}",
                         file=sys.stderr,
                     )
                 df_single_benchmark = None
