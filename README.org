@@ -510,17 +510,16 @@ Reports are generated with the command.
 First we gather that price data that we need.
 
 #+begin_src sh :dir examples/reports :results output :async yes :session inv-perf :results silent
-python -m investory.values --commodity aapl --output-dir data --begin 2023-01-01 --verbose 0
-python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2023-01-01 --verbose 0
-python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $ --roi-report
+python -m investory.values --commodity aapl --output-dir data --begin 2022-12-01
+python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2022-12-01
+python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $
 #+end_src
 
-It generates a report for each year, and a summary with current position.
+It generates a report for each year and a summary graphical report.
 
-[[file:examples/reports/reports/asset-distribution.svg]] [[file:examples/reports/reports/asset-evolution.svg]] 
-[[file:examples/reports/reports/roi-comparison.svg]]
+[[file:examples/reports/reports/combined-overview.svg]]
 
-*** COMMENT More elaborate example
+*** More elaborate example
 :PROPERTIES:
 :header-args: :dir examples/reports-2
 :ORDERED:  t
@@ -604,7 +603,7 @@ Finally, we collect the price data using the =values= module and call the =repor
 
 #+begin_src sh :async yes :session reports :results silent
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
-# python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01
+python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
 python -m investory.values --commodity R$ --yahooticker BRLUSD=X --output-dir data --begin 2021-01-01 --currency $
 python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 2 --benchmark-ticker ^spx ^bvsp ^ndx

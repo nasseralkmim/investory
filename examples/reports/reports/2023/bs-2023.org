@@ -1,5 +1,3 @@
-* Monthly investments evolution graph
-[[file:asset-evolution.svg]] [[file:asset-distribution.svg]]
 * Summary balance sheet last three years
 Balance Sheet 2021-12-31..2023-12-31, valued at period ends
 
@@ -24,7 +22,7 @@ Balance Sheet 2023-12-31, valued at period ends
  Assets               ||            
 ----------------------++------------
  assets               ||          0 
-   cash               ||   [31m$-125.07[m 
+   cash               ||   $-125.07 
    investments:stocks ||    $125.07 
 ======================++============
  Liabilities          ||            
