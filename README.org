@@ -289,23 +289,23 @@ print(appl.history(start=datetime.date(2023,1,31), end=datetime.date(2023,2,1), 
 
 We can record prices over time with:
 
-#+begin_src sh :dir examples/reports/data
+#+begin_src sh :dir examples/reports-1/data
 python -m investory.values --commodity aapl --begin 2023-01-01
 head aapl.ledger
 #+end_src
 
 #+RESULTS:
 #+begin_example
-P 2023-01-31 "aapl" $142.631607
-P 2023-02-28 "aapl" $145.938248
-P 2023-03-31 "aapl" $163.253647
-P 2023-04-28 "aapl" $167.985901
-P 2023-05-31 "aapl" $175.723053
-P 2023-06-30 "aapl" $192.299026
-P 2023-07-31 "aapl" $194.757645
-P 2023-08-31 "aapl" $186.503067
-P 2023-09-29 "aapl" $169.964294
-P 2023-10-31 "aapl" $169.527496
+P 2022-12-30 "aapl" $128.268448
+P 2023-01-31 "aapl" $142.444824
+P 2023-02-28 "aapl" $145.747131
+P 2023-03-31 "aapl" $163.039825
+P 2023-04-28 "aapl" $167.765884
+P 2023-05-31 "aapl" $175.492905
+P 2023-06-30 "aapl" $192.047180
+P 2023-07-31 "aapl" $194.502609
+P 2023-08-31 "aapl" $186.258820
+P 2023-09-29 "aapl" $169.741699
 #+end_example
 
 **** Portfolio return
@@ -315,7 +315,7 @@ We can do that with =hledger roi= command.
 The =--investment= flag queries our investment accounts, in this case everything recorded with "investments".
 The flag =--profit-loss= queries the accounts that record change in value of the investments, in this case we use the "P" price directive, so we set to an account without any record.
 
-#+begin_src sh :dir examples/reports
+#+begin_src sh :dir examples/reports-1
 hledger -f all.ledger -f data/aapl.ledger roi --investment investments --profit-loss unrealized --value=then --monthly --infer-market-price --end=2024-01-01
 #+end_src
 
@@ -324,97 +324,58 @@ hledger -f all.ledger -f data/aapl.ledger roi --investment investments --profit-
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
 |       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
 +=======++============+============++===============+==========+=============+=========++=========++============+==========+
-|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
-|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
-|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
-|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
-|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
-|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
-|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.13% ||      1.28% |   16.15% |
-|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
-|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
-|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
-|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
-|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
+|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.44 |  $17.37 || 414.09% ||     13.89% |  362.46% |
+|     2 || 2023-02-01 | 2023-02-28 ||       $142.44 |        0 |     $145.75 |   $3.30 ||  34.82% ||      2.32% |   34.85% |
+|     3 || 2023-03-01 | 2023-03-31 ||       $145.75 |        0 |     $163.04 |  $17.29 || 274.39% ||     11.86% |  274.20% |
+|     4 || 2023-04-01 | 2023-04-30 ||       $163.04 |        0 |     $167.77 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
+|     5 || 2023-05-01 | 2023-05-31 ||       $167.77 |        0 |     $175.49 |   $7.73 ||  69.92% ||      4.61% |   70.00% |
+|     6 || 2023-06-01 | 2023-06-30 ||       $175.49 |        0 |     $192.05 |  $16.55 || 199.44% ||      9.43% |  199.34% |
+|     7 || 2023-07-01 | 2023-07-31 ||       $192.05 |        0 |     $194.50 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
+|     8 || 2023-08-01 | 2023-08-31 ||       $194.50 |        0 |     $186.26 |  $-8.24 || -39.95% ||     -4.24% |  -39.96% |
+|     9 || 2023-09-01 | 2023-09-30 ||       $186.26 |        0 |     $169.74 | $-16.52 || -67.69% ||     -8.87% |  -67.70% |
+|    10 || 2023-10-01 | 2023-10-31 ||       $169.74 |        0 |     $169.31 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
+|    11 || 2023-11-01 | 2023-11-30 ||       $169.31 |        0 |     $188.57 |  $19.26 || 271.02% ||     11.38% |  271.10% |
+|    12 || 2023-12-01 | 2023-12-31 ||       $188.57 |        0 |     $191.13 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
+| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.13 |  $66.06 ||  53.18% ||     52.82% |   52.82% |
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
 
 #+end_example
 
-We can see that in one month, the stock went from 125.07 to 142.63.
-An unrealized profit of 17.56.
-A 14.04% growth in one month (/ (- 142.63 125.07) 125.07).
+We can see that in one month, the stock went from $125.07 to $142.44.
+An unrealized profit of $17.56.
+A 13.89% growth in one month (/ (- 142.44 125.07) 125.07).
 
 **** Index comparison
 
 One useful information as investor is to see how our portfolio is performing compared with the whole market.
 With =hledger= we can get the monthly report for the year.
 
-#+begin_src sh :dir examples/reports
-hledger -f all.ledger -f data/aapl.ledger roi --inv investments --pnl unrealized --value=then --monthly --infer-market-price --end=2024-01-01
+#+begin_src sh :dir examples/reports-1
+hledger -f all.ledger -f data/aapl.ledger roi --inv investments --pnl unrealized --value=then --yearly --infer-market-price --end=2024-01-01
 #+end_src
 
 #+RESULTS:
-#+begin_example
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-|       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
-+=======++============+============++===============+==========+=============+=========++=========++============+==========+
-|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.63 |  $17.56 || 422.64% ||     14.04% |  369.68% |
-|     2 || 2023-02-01 | 2023-02-28 ||       $142.63 |        0 |     $145.94 |   $3.31 ||  34.82% ||      2.32% |   34.85% |
-|     3 || 2023-03-01 | 2023-03-31 ||       $145.94 |        0 |     $163.25 |  $17.32 || 274.39% ||     11.86% |  274.20% |
-|     4 || 2023-04-01 | 2023-04-30 ||       $163.25 |        0 |     $167.99 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
-|     5 || 2023-05-01 | 2023-05-31 ||       $167.99 |        0 |     $175.72 |   $7.74 ||  69.92% ||      4.61% |   70.00% |
-|     6 || 2023-06-01 | 2023-06-30 ||       $175.72 |        0 |     $192.30 |  $16.58 || 199.44% ||      9.43% |  199.34% |
-|     7 || 2023-07-01 | 2023-07-31 ||       $192.30 |        0 |     $194.76 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
-|     8 || 2023-08-01 | 2023-08-31 ||       $194.76 |        0 |     $186.50 |  $-8.25 || -39.95% ||     -4.24% |  -39.96% |
-|     9 || 2023-09-01 | 2023-09-30 ||       $186.50 |        0 |     $169.96 | $-16.54 || -67.69% ||     -8.87% |  -67.70% |
-|    10 || 2023-10-01 | 2023-10-31 ||       $169.96 |        0 |     $169.53 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
-|    11 || 2023-11-01 | 2023-11-30 ||       $169.53 |        0 |     $188.82 |  $19.29 || 271.02% ||     11.38% |  271.10% |
-|    12 || 2023-12-01 | 2023-12-31 ||       $188.82 |        0 |     $191.38 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.38 |  $66.31 ||  53.38% ||     53.02% |   53.02% |
-+-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-
-#+end_example
+: +---++------------+------------++---------------+----------+-------------+--------++--------++------------+----------+
+: |   ||      Begin |        End || Value (begin) | Cashflow | Value (end) |    PnL ||    IRR || TWR/period | TWR/year |
+: +===++============+============++===============+==========+=============+========++========++============+==========+
+: | 1 || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.13 | $66.06 || 53.18% ||     52.82% |   52.82% |
+: +---++------------+------------++---------------+----------+-------------+--------++--------++------------+----------+
+: 
 
 We can check the accumulated year return by multiplying the return factor for each period.
 This matches the last table row from =hledger=.
 
-#+begin_src python
-import numpy as np
-monthly_returns_perc = np.array([
-    14.04,
-     2.32,
-    11.86,
-     2.90,
-     4.61,
-     9.43,
-     1.28,
-    -4.24,
-    -8.87,
-    -0.26,
-    11.38,
-     1.36,
-])
-
-accumulated_return = np.prod(monthly_returns_perc / 100 + 1)
-print(f"Performance year: {(accumulated_return - 1)*100:.2f}%")
-#+end_src
-
-#+RESULTS:
-: Performance year: 53.01%
-
-If we look at market return for this year[fn:2] we see that the S&P500 got around 24%.
+If we look at market return for this year we see that the S&P500 got around 26%.
 So our single-stock portfolio beat the market by a lot on this year.
 
 We can get the same result for any index by the same procedure.
 In yahoo finance, the S&P 500 is registered with the ticker ^SPX.
 Then, we can create an artificial ledger file with one transaction of buying the index.
 
-#+begin_src sh :dir examples/reports/data
-python -m investory.values --commodity ^spx --begin 2023-01-01
-initprice=$(python -c "import yahooquery as yq; import datetime; print('{:.2f}'.format(yq.Ticker('^spx').history(start=datetime.date(2022,12,31), end=datetime.date(2023,1,4), adj_ohlc=True)['open'].iloc[0]))")
+#+begin_src sh :dir examples/reports-1/data
+python -m investory.values --commodity ^spx --begin 2023-01-01 --output-dir data
+initprice=$(python -c "import ybankinplay as yq; import datetime; print('{:.2f}'.format(yq.Ticker('^spx').history(start=datetime.date(2022,12,31), end=datetime.date(2023,1,4), adj_ohlc=True)['open'].iloc[0]))")
 echo -en "2023-01-01 * Buy 1 SPY share\n assets:investments:SPX  1 ^spx @ \$ $initprice\n assets:cash" > index.ledger
 hledger -f index.ledger -f ^spx.ledger \
         roi --inv investments --pnl unrealized \
@@ -434,7 +395,7 @@ To get a nice plot of accumulated return in a year, we need to first export the 
 Unfortunately, hledger does not offer csv output.
 So we use the default ASCII table.
 
-#+begin_src sh :dir examples/reports
+#+begin_src sh :dir examples/reports-1
 hledger -f data/index.ledger -f data/^spx.ledger \
         roi --investment investments --profit-loss unrealized \
         --value=then --monthly --infer-market-price \
@@ -490,17 +451,20 @@ ax.legend()
 #+end_src
 
 #+RESULTS:
-[[file:examples/reports/data/returns.svg]]
+[[file:examples/reports-1/data/returns.svg]]
 
 We can see that the index performance is similar to the apple, since apple is a significant part of it.
 This is for a year.
 We would like to know the performance of all the live of our portfolio.
 
 *** Simple ledger
+:PROPERTIES:
+:ORDERED:  t
+:END:
 
 Consider a simple ledger involving investments:
 
-#+begin_src ledger :tangle examples/reports/all.ledger
+#+begin_src ledger :tangle examples/reports-1/all.ledger
 2023-01-03 * Buy appl
     assets:investments:stocks  1 aapl @ $125.07
     assets:cash
@@ -509,7 +473,7 @@ Consider a simple ledger involving investments:
 Reports are generated with the command.
 First we gather that price data that we need.
 
-#+begin_src sh :dir examples/reports :results output :async yes :session inv-perf :results silent
+#+begin_src sh :dir examples/reports-1 :results output :async yes :session reports-1 :results silent
 python -m investory.values --commodity aapl --output-dir data --begin 2022-12-01
 python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2022-12-01
 python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $
@@ -517,7 +481,7 @@ python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --cu
 
 It generates a report for each year and a summary graphical report.
 
-[[file:examples/reports/reports/combined-overview.svg]]
+[[file:examples/reports-1/reports/combined-overview.svg]]
 
 *** More elaborate example
 :PROPERTIES:
