@@ -251,13 +251,19 @@ def generate_asset_distribution_graph(
         )
         _ = ax.axis("off")  # Hide axes
     else:
-        # Plot pie chart without labels on slices
-        wedges, _ = ax.pie(
+        # Plot pie chart with percentage labels on slices
+        wedges, _, autotexts = ax.pie(
             df_positive["balance"],
             colors=colors,
+            autopct="%1.1f%%",  # Add percentage labels
             startangle=90,  # Optional: Adjust start angle
             counterclock=False,  # Optional: Adjust direction
         )
+        # Improve label appearance (optional, but good practice)
+        for autotext in autotexts:
+            autotext.set_color("white")  # Set text color for better contrast if needed
+            autotext.set_fontsize(8)  # Adjust font size
+
         _ = ax.set_title("Asset Distribution")
 
         # Add legend to the side
