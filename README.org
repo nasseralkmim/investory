@@ -46,34 +46,25 @@ cd ~/.local/src/investory/
 Get commodity (given as yahoo ticker) price for each month.
 The price is saved in a ledger file named ~ticker.ledger~.
 
-#+begin_src sh :dir examples/values :results output
-python -m investory.values --commodity AAPL --begin 2023-01-01 --verbose 1
+#+begin_src sh :dir examples/values :results output :async yes :session basic-values
+python -m investory.values --commodity AAPL --begin 2023-01-01 --verbose 0
 head AAPL.ledger
 rm AAPL.ledger
 #+end_src
 
 #+RESULTS: 
 #+begin_example
-Processing commodity: AAPL
-Yahoo Ticker: AAPL
-Currency: $
-Output directory: /home/nasser/.local/src/investory/examples/values
-Ledger file path: /home/nasser/.local/src/investory/examples/values/AAPL.ledger
-File /home/nasser/.local/src/investory/examples/values/AAPL.ledger not found when trying to get last date.
-File /home/nasser/.local/src/investory/examples/values/AAPL.ledger not found, using default initial date: 2023-01-01
-Fetched 580 historical data points for AAPL.
-Writing 27 new month-end entries to /home/nasser/.local/src/investory/examples/values/AAPL.ledger...
-Finished processing AAPL.
-P 2023-01-31 "AAPL" $142.631607
+((general) ) 𒆸﻿ ((general) ) 𒆸﻿ ((general) ) 𒆸﻿ P 2023-01-31 "AAPL" $142.631607
 P 2023-02-28 "AAPL" $145.938263
 P 2023-03-31 "AAPL" $163.253616
 P 2023-04-28 "AAPL" $167.985901
 P 2023-05-31 "AAPL" $175.723053
-P 2023-06-30 "AAPL" $192.299026
-P 2023-07-31 "AAPL" $194.757660
-P 2023-08-31 "AAPL" $186.503082
-P 2023-09-29 "AAPL" $169.964279
-P 2023-10-31 "AAPL" $169.527512
+P 2023-06-30 "AAPL" $192.299011
+P 2023-07-31 "AAPL" $194.757629
+P 2023-08-31 "AAPL" $186.503067
+P 2023-09-29 "AAPL" $169.964310
+P 2023-10-31 "AAPL" $169.527481
+((general) ) 𒆸﻿ ((general) ) 𒆸﻿
 #+end_example
 
 *** Stock split value
@@ -242,21 +233,17 @@ It handles stock splits and fees, generating output files ready for import or fu
 Given transaction files like those found in `tests/transactions_examples/`, you can calculate the cost basis. For example, using `test1.csv` and `test2.csv` which both contain transactions for the ticker 'AAAA':
 
 #+begin_src sh :results output :dir .
-python -m investory.costbasis tests/transactions_examples/test1.csv tests/transactions_examples/test2.csv --verbose 1
+python -m investory.costbasis --transaction-files tests/transactions_examples/test1.csv tests/transactions_examples/test2.csv --verbose 1
 ls processed/
 rm -rf processed/
 #+end_src
 
 #+RESULTS:
-#+begin_example
-Processing file: tests/transactions_examples/test1.csv
-Processing file: tests/transactions_examples/test2.csv
-Aggregating transactions...
-Generating inventory for AAAA...
-Saving output for AAAA to processed/transactions-AAAA.csv
-processed:
-transactions-AAAA.csv
-#+end_example
+: Processing 2 transaction file(s)...
+: - test1.csv
+: - test2.csv
+: Saved processed data for year 2021 to tests/transactions_examples/processed/transactions-2021.out.csv
+: Saved processed data for year 2022 to tests/transactions_examples/processed/transactions-2022.out.csv
 
 This command reads the input CSVs, calculates the cost basis for the commodity ('AAAA'), and saves the results into a file within the `processed/` directory.
 
@@ -536,6 +523,7 @@ It generates a report for each year, and a summary with current position.
 *** COMMENT More elaborate example
 :PROPERTIES:
 :header-args: :dir examples/reports-2
+:ORDERED:  t
 :END:
 
 First we start with our transaction log:
@@ -583,7 +571,7 @@ Then, we process our transaction to compute the cost basis.
 python -m investory.costbasis --transaction-files transactions.csv
 #+end_src
 
-We now use =hledger= csv import to generate ledger files and add to a "all.ledger"
+We now use =hledger= csv import to generate ledger files and add to a ~all.ledger~ file.
 For that we need some personal rules that define accounts names.
 To keep it simple, I show here just the rule for buying an asset.
 
@@ -612,13 +600,16 @@ do
 done
 #+end_src
 
-Finally we collect the price data and call reports module.
+Finally, we collect the price data using the =values= module and call the =reports= module.
 
-#+begin_src sh :async yes :session reports-elaborate :results silent
+#+begin_src sh :async yes :session reports :results silent
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
-python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01 --currency $
+# python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
-python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 1
+python -m investory.values --commodity R$ --yahooticker BRLUSD=X --output-dir data --begin 2021-01-01 --currency $
+python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 2 --benchmark-ticker ^spx ^bvsp ^ndx
 #+end_src
 
+#+attr_latex: :width .9\textwdith
 [[file:examples/reports-2/reports/combined-overview.svg]]
+
