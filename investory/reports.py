@@ -12,7 +12,7 @@ from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 import matplotlib.axes
 import matplotlib.pyplot as plt
 import pandas as pd
-import ybankinplay as yq
+import yahooquery as yq
 
 
 CURRENCY_SYMBOL_TO_CODE = {
