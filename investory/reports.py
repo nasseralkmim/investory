@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 import sys
-import sys
 import datetime
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
