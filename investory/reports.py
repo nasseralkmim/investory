@@ -358,8 +358,7 @@ def generate_asset_evolution_graph(
     # index: date
     # columns id: account names
     # columns values: account balances
-    df_evo: pd.DataFrame = pd.read_csv(
-        csv_data, index_col=0)
+    df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
     # Update the currency symbol replacement
     # The replace operation can return Series or None, causing type issues. Ignore for now.
     df_evo = df_evo.replace(
