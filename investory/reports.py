@@ -696,16 +696,27 @@ def plot_yearly_twr_bars(
     if portfolio_yearly is not None:
         combined_df["Portfolio"] = portfolio_yearly
 
-    valid_benchmarks_data = []
-    for i, df_bm in enumerate(dfs_benchmark):
-        if df_bm is not None and not df_bm.empty:
+    valid_benchmarks_data = (
+        []
+    )  # Keep track of benchmarks that have data for color mapping
+    for i, benchmark_yearly_series in enumerate(
+        dfs_benchmark
+    ):  # Now a list of Series or None
+        if benchmark_yearly_series is not None and not benchmark_yearly_series.empty:
             ticker = benchmark_tickers[i]
-            benchmark_yearly = calculate_yearly_twr(df_bm, f"Benchmark ({ticker})")
-            if benchmark_yearly is not None:
-                combined_df[f"Benchmark ({ticker})"] = benchmark_yearly
-                valid_benchmarks_data.append(
-                    {"ticker": ticker, "data": benchmark_yearly}
-                )
+            # benchmark_yearly_series is already the yearly TWR percentages (as a Series with year index)
+            combined_df[f"Benchmark ({ticker})"] = benchmark_yearly_series
+            valid_benchmarks_data.append(
+                {
+                    "ticker": ticker,
+                    "data": benchmark_yearly_series,
+                }  # Store the series itself
+            )
+        elif verbose >= 1 and benchmark_yearly_series is None:
+            print(
+                f"No yearly TWR data for benchmark: {benchmark_tickers[i]}",
+                file=sys.stderr,
+            )
 
     if combined_df.empty:
         ax.text(0.5, 0.5, "No yearly ROI data available", ha="center", va="center")
@@ -797,32 +808,34 @@ def plot_yearly_twr_bars(
     # Create year labels, handling YTD for the last year if applicable
     year_labels = []
     current_year = datetime.datetime.now().year
-    last_data_dates = (
-        [df_portfolio["date"].max()]
-        if df_portfolio is not None and not df_portfolio.empty
-        else []
-    )
-    for df_bm in dfs_benchmark:
-        if df_bm is not None and not df_bm.empty:
-            last_data_dates.append(df_bm["date"].max())
-
-    last_data_date = max(filter(None, last_data_dates), default=None)
+    # YTD logic primarily based on portfolio data, as benchmarks are now full-year returns.
+    last_portfolio_date: datetime.date | None = None
+    if df_portfolio is not None and not df_portfolio.empty:
+        last_portfolio_date = df_portfolio["date"].max()
 
     year_labels = []
-    current_year = datetime.datetime.now().year
     # Ensure 'years' (from combined_df.index) is sorted if it's not already
     sorted_years = sorted(list(years))
 
-    for year_val in sorted_years:  # Iterate over sorted unique years from data
-        is_ytd = False
+    for (
+        year_val_dt
+    ) in sorted_years:  # year_val_dt might be int or Timestamp from df index
+        year_val = int(str(year_val_dt).split("-")[0])  # Ensure it's an integer year
+
+        is_ytd_for_portfolio = False
         if (
-            last_data_date
+            last_portfolio_date
             and year_val == current_year
             and (
-                last_data_date.month < 12
-                or (last_data_date.month == 12 and last_data_date.day < 31)
+                last_portfolio_date.month < 12
+                or (last_portfolio_date.month == 12 and last_portfolio_date.day < 31)
             )
         ):
+            is_ytd_for_portfolio = True
+
+        # Label as YTD if portfolio is YTD for that year. Benchmarks are full-year.
+        # The bar for that year might contain both portfolio (YTD) and benchmark (full-year)
+        if is_ytd_for_portfolio:
             year_labels.append(f"{year_val}\n(YTD)")
         else:
             year_labels.append(str(year_val))
@@ -902,8 +915,10 @@ def get_roi_data(
         return df_portfolio, dfs_benchmark
 
     # Add begin date if specified else use first transaction from ledger
+    portfolio_begin_date_for_roi = first_trans_date_str  # Default to ledger start
     if roi_begin_date:
         base_roi_args.extend(["--begin", roi_begin_date])
+        portfolio_begin_date_for_roi = roi_begin_date  # Use user-specified if provided
     else:
         base_roi_args.extend(["--begin", first_trans_date_str])
 
@@ -937,131 +952,249 @@ def get_roi_data(
         if verbose >= 1:
             print(f"Error getting or parsing portfolio ROI: {e}", file=sys.stderr)
 
-    # --- 2. Benchmarks ROI ---
-    for benchmark_ticker in benchmark_tickers:
-        df_single_benchmark: pd.DataFrame | None = None
-        benchmark_data_file = os.path.join(data_dir, f"{benchmark_ticker}.ledger")
+    # --- 2. Benchmarks ROI (New method: EOY price comparison) ---
+    # Determine years for benchmark calculation
+    years_for_calculation: list[int] = []
+    if df_portfolio is not None and not df_portfolio.empty:
+        min_year_portfolio = df_portfolio["date"].dt.year.min()
+        max_year_portfolio = df_portfolio["date"].dt.year.max()
+        years_for_calculation = list(range(min_year_portfolio, max_year_portfolio + 1))
+    else:
+        ledger_overall_years = get_ledger_years(ledger_file, verbose=verbose)
+        if ledger_overall_years:
+            years_for_calculation = ledger_overall_years
 
-        if not os.path.exists(benchmark_data_file):
-            if verbose >= 1:
-                print(
-                    f"Benchmark data file not found: {benchmark_data_file}",
-                    file=sys.stderr,
-                )
-                print(
-                    f"Attempting to generate it using: python -m investory.values --commodity {benchmark_ticker} --output-dir {data_dir}",
-                    file=sys.stderr,
-                )
+    # If still no years, try to derive from roi_begin_date or default to current year
+    if not years_for_calculation:
+        start_year_fallback = datetime.datetime.now().year
+        if portfolio_begin_date_for_roi:  # Use the effective begin date for ROI context
             try:
-                ticker = yq.Ticker(benchmark_ticker)
-                benchmark_currency = ticker.price[benchmark_ticker].get(
-                    "currencySymbol", "$"
-                )
-
-                generation_command = [
-                    sys.executable,
-                    "-m",
-                    "investory.values",
-                    "--commodity",
-                    benchmark_ticker,
-                    "--output-dir",
-                    data_dir,
-                    "--currency",
-                    benchmark_currency,
-                    "--begin",
-                    first_trans_date_str,
-                ]
-                if (
-                    verbose >= 2
-                ):  # Pass verbosity to submodule if it supports it, or just for logging here
-                    print(f"Running command: {' '.join(generation_command)}")
-
-                process = subprocess.run(
-                    generation_command,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    encoding="utf-8",
-                )
-                if process.returncode != 0:
-                    print(
-                        f"Error generating benchmark data for {benchmark_ticker}:",
-                        file=sys.stderr,
-                    )
-                    if process.stdout:
-                        print(f"Stdout: {process.stdout.strip()}", file=sys.stderr)
-                    if process.stderr:
-                        print(f"Stderr: {process.stderr.strip()}", file=sys.stderr)
-                elif verbose >= 1:
-                    print(
-                        f"Successfully generated/updated data for {benchmark_ticker} in {data_dir}"
-                    )
-            except Exception as e:
-                print(
-                    f"Failed to execute investory.values for {benchmark_ticker}: {e}",
-                    file=sys.stderr,
-                )
-
-        if os.path.exists(benchmark_data_file):
-            try:
-                # Get the earliest price from the benchmark data file
-                price_line_cmd = f"hledger -f {benchmark_data_file} prices {benchmark_ticker} | head -1"
-                earliest_price_line = run_command(price_line_cmd, verbose=verbose)
-
-                if not earliest_price_line.strip():
-                    raise ValueError(
-                        f"No price entries found for {benchmark_ticker} in {benchmark_data_file}"
-                    )
-
-                parts = earliest_price_line.split()
-                # Expected format: P YYYY-MM-DD TICKER $PRICE or P YYYY-MM-DD TICKER PRICE CURRENCY
-                if len(parts) < 4 or parts[0] != "P":
-                    raise ValueError(
-                        f"Unexpected format for price line from 'hledger prices': {earliest_price_line}"
-                    )
-
-                initial_price_date_str = parts[1]
-                initial_price_date = datetime.datetime.strptime(
-                    initial_price_date_str, "%Y-%m-%d"
-                ).date()
-
-                price_expression_str = " ".join(parts[3:])
-                initial_price, benchmark_currency = _parse_hledger_price_amount(
-                    price_expression_str
-                )
-
-                if verbose >= 2:
-                    print(
-                        f"Using initial price for {benchmark_ticker} from {benchmark_data_file}: "
-                        f"{benchmark_currency}{initial_price:.2f} on {initial_price_date_str}"
-                    )
-
-                temp_benchmark_ledger = f"{initial_price_date.strftime('%Y-%m-%d')} * Buy 1 {benchmark_ticker}\n    assets:investments:INDEX  1 {benchmark_ticker} @ {benchmark_currency}{initial_price:.2f}\n    assets:cash\n"
-                benchmark_command = f"hledger -f - -f {benchmark_data_file} {' '.join(base_roi_args)} --value=then,{benchmark_currency}"
-                benchmark_roi_ascii = run_command(
-                    benchmark_command, stdin_data=temp_benchmark_ledger, verbose=verbose
-                )
-                df_single_benchmark = parse_hledger_roi_ascii(
-                    benchmark_roi_ascii, verbose
-                )
-            except (subprocess.CalledProcessError, IOError, ValueError) as e:
+                start_year_fallback = datetime.datetime.strptime(
+                    portfolio_begin_date_for_roi, "%Y-%m-%d"
+                ).year
+            except ValueError:
                 if verbose >= 1:
                     print(
-                        f"Error processing benchmark {benchmark_ticker} using its data file: {e}",
+                        f"Warning: Could not parse roi_begin_date '{portfolio_begin_date_for_roi}'. Defaulting year range.",
                         file=sys.stderr,
                     )
-                df_single_benchmark = None
+        current_year = datetime.datetime.now().year
+        years_for_calculation = list(range(start_year_fallback, current_year + 1))
+        if (
+            verbose >= 1
+            and not ledger_overall_years
+            and (df_portfolio is None or df_portfolio.empty)
+        ):
+            print(
+                f"Warning: No portfolio or ledger years found. Using range: {years_for_calculation}",
+                file=sys.stderr,
+            )
+
+    # Filter years based on the effective ROI begin date
+    if portfolio_begin_date_for_roi:
+        try:
+            limit_year = datetime.datetime.strptime(
+                portfolio_begin_date_for_roi, "%Y-%m-%d"
+            ).year
+            years_for_calculation = [
+                y for y in years_for_calculation if y >= limit_year
+            ]
+        except ValueError:
+            pass  # Already warned if unparseable
+
+    if verbose >= 2:
+        print(f"Years for benchmark calculations: {years_for_calculation}")
+
+    for benchmark_ticker in benchmark_tickers:
+        benchmark_yearly_returns_data: list[dict[str, float | int]] = []
+        if verbose >= 1:  # Changed from >=2 to >=1 for better default visibility
+            print(
+                f"Calculating yearly TWR for benchmark: {benchmark_ticker} using yahooquery EOY prices."
+            )
+
+        current_calendar_year = datetime.datetime.now().year
+        for year_idx, year in enumerate(years_for_calculation):
+            # Determine the target date for the "current" period's price
+            if year == current_calendar_year:
+                # For the current year, use today's date for YTD calculation
+                target_date_for_current_price = datetime.date.today()
+                price_label_for_log = "YTD"
+            else:
+                # For past years, use Dec 31st of that year
+                target_date_for_current_price = datetime.date(year, 12, 31)
+                price_label_for_log = f"EOY({year})"
+
+            price_current_period = _get_price_on_or_before_date(
+                benchmark_ticker,
+                target_date_for_current_price,
+                verbose,
+            )
+
+            # Get EOY price for previous year (Y-1)
+            target_date_for_prev_price = datetime.date(year - 1, 12, 31)
+            price_prev_eoy = _get_price_on_or_before_date(
+                benchmark_ticker,
+                target_date_for_prev_price,
+                verbose,
+            )
+
+            if price_current_period is not None and price_prev_eoy is not None:
+                if price_prev_eoy != 0:
+                    yearly_return_pct = (
+                        (price_current_period / price_prev_eoy) - 1.0
+                    ) * 100.0
+                    benchmark_yearly_returns_data.append(
+                        {"year": year, "twr_percent": yearly_return_pct}
+                    )
+                    if verbose >= 2:  # More detailed log for successful calculation
+                        print(
+                            f"  Benchmark {benchmark_ticker} TWR for {year}: {yearly_return_pct:.2f}% (P_{price_label_for_log}={price_current_period:.2f}, P_EOY({year-1})={price_prev_eoy:.2f})"
+                        )
+                elif verbose >= 1:
+                    print(
+                        f"  Previous year ({year - 1}) EOY price for {benchmark_ticker} is zero. Skipping TWR calculation for {year}.",
+                        file=sys.stderr,
+                    )
+            elif verbose >= 1:
+                # _get_eoy_price already prints detailed errors for its failure
+                print(
+                    f"  Could not get one or both EOY prices for {benchmark_ticker} for TWR calculation of year {year}. Check previous logs.",
+                    file=sys.stderr,
+                )
+
+        if benchmark_yearly_returns_data:
+            df_bm_yearly = pd.DataFrame(benchmark_yearly_returns_data).set_index("year")
+            # Ensure the series has a name for easier debugging if needed later
+            series_to_append = df_bm_yearly["twr_percent"]
+            series_to_append.name = benchmark_ticker
+            dfs_benchmark.append(series_to_append)
         else:
             if verbose >= 1:
                 print(
-                    f"Benchmark data file still not found for {benchmark_ticker} after generation attempt.",
+                    f"No yearly TWR data calculated for benchmark: {benchmark_ticker}",
                     file=sys.stderr,
                 )
-            df_single_benchmark = None
-
-        dfs_benchmark.append(df_single_benchmark)
+            dfs_benchmark.append(None)  # No data calculated
 
     return df_portfolio, dfs_benchmark
+
+
+def _get_price_on_or_before_date(
+    benchmark_ticker: str, target_date: datetime.date, verbose: int = 0
+) -> float | None:
+    """Fetch closing price for a benchmark ticker on or before a specific date using yahooquery."""
+    try:
+        ticker = yq.Ticker(benchmark_ticker, asynchronous=False)
+
+        # Fetch data for a window ending on the target_date.
+        # Start date is ~20 calendar days before to ensure we get data if target_date is a holiday/weekend.
+        # yahooquery's history `end` parameter is inclusive.
+        start_fetch_date = target_date - datetime.timedelta(days=20)
+        end_fetch_date = target_date  # Inclusive end date for yq
+
+        hist_data = ticker.history(
+            start=start_fetch_date, end=end_fetch_date, adj_ohlc=True
+        )
+
+        if isinstance(hist_data, dict):
+            if benchmark_ticker not in hist_data or hist_data[benchmark_ticker].empty:
+                if verbose >= 1:
+                    print(
+                        f"No historical data in dict for {benchmark_ticker} (target date {target_date}) via yahooquery.",
+                        file=sys.stderr,
+                    )
+                return None
+            hist = hist_data[benchmark_ticker]
+        elif isinstance(hist_data, pd.DataFrame):
+            hist = hist_data
+        else:
+            if verbose >= 1:
+                print(
+                    f"Unexpected data type {type(hist_data)} from yahooquery for {benchmark_ticker} (target date {target_date}).",
+                    file=sys.stderr,
+                )
+            return None
+
+        if hist.empty or "close" not in hist.columns:
+            if verbose >= 1:
+                print(
+                    f"No historical data or 'close' column found for {benchmark_ticker} (target date {target_date}) via yahooquery.",
+                    file=sys.stderr,
+                )
+            return None
+
+        if isinstance(hist.index, pd.MultiIndex):
+            if benchmark_ticker in hist.index.get_level_values(0):
+                hist = hist.loc[benchmark_ticker]
+            else:
+                if verbose >= 1:
+                    print(
+                        f"Ticker {benchmark_ticker} not found in MultiIndex for target date {target_date} data.",
+                        file=sys.stderr,
+                    )
+                return None
+
+        hist = hist.sort_index()  # Sort by date index to ensure iloc[-1] is the latest
+
+        if hist.empty:
+            if verbose >= 1:
+                print(
+                    f"No historical data after index handling for {benchmark_ticker} (target date {target_date}) via yahooquery.",
+                    file=sys.stderr,
+                )
+            return None
+
+        # Get the last available closing price in the fetched period (which should be on or before target_date)
+        last_close = hist["close"].iloc[-1]
+
+        if pd.isna(last_close):
+            if verbose >= 1:
+                print(
+                    f"Last closing price is NaN for {benchmark_ticker} (target date {target_date}) via yahooquery.",
+                    file=sys.stderr,
+                )
+            return None
+
+        actual_price_date_str = "Unknown Date"
+        if isinstance(hist.index, pd.DatetimeIndex) and not hist.index.empty:
+            actual_price_date = hist.index[-1]
+            # Ensure the date is a datetime.date object for comparison, yq might return Timestamp
+            if isinstance(actual_price_date, pd.Timestamp):
+                actual_price_date = actual_price_date.date()
+
+            actual_price_date_str = actual_price_date.strftime("%Y-%m-%d")
+            if (
+                actual_price_date > target_date
+            ):  # Should not happen with yq end=target_date
+                if verbose >= 1:
+                    print(
+                        f"Warning: Fetched price for {benchmark_ticker} is for {actual_price_date_str}, which is after target {target_date}.",
+                        file=sys.stderr,
+                    )
+                # Depending on strictness, one might return None here or use the price.
+                # For now, we use it, assuming yq's `end` parameter behaves.
+
+        if verbose >= 2:
+            print(
+                f"Price for {benchmark_ticker} (target {target_date}, actual {actual_price_date_str}) from yq: {last_close:.2f}"
+            )
+
+        return float(last_close)
+
+    except AttributeError as ae:
+        if verbose >= 1:
+            print(
+                f"AttributeError (e.g. invalid ticker {benchmark_ticker}, or Ticker object has no history) for target date {target_date} via yahooquery: {ae}",
+                file=sys.stderr,
+            )
+        return None
+    except Exception as e:
+        if verbose >= 1:
+            print(
+                f"Error fetching price for {benchmark_ticker} (target date {target_date}) via yahooquery: {e}",
+                file=sys.stderr,
+            )
+        return None
 
 
 def generate_roi_report(  # Keep the old function signature for now, but it will just call the new ones
