@@ -1464,7 +1464,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         nargs="+",  # Accept one or more tickers
-        default=["^spx"],  # Default to S&P 500 as a list
+        default=["spy"],  # Default to S&P 500 as a list
     )
     _ = parser.add_argument(
         "--roi-investment-account",
