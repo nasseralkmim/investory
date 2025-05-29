@@ -10,7 +10,6 @@ import datetime
 from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 
 import matplotlib.axes
-import matplotlib.figure
 import matplotlib.pyplot as plt
 import pandas as pd
 import ybankinplay as yq
@@ -360,8 +359,7 @@ def generate_asset_evolution_graph(
     # columns id: account names
     # columns values: account balances
     df_evo: pd.DataFrame = pd.read_csv(
-        csv_data, index_col=0
-    )  # pyright: ignore[reportUnknownMemberType]
+        csv_data, index_col=0)
     # Update the currency symbol replacement
     # The replace operation can return Series or None, causing type issues. Ignore for now.
     df_evo = df_evo.replace(
@@ -378,9 +376,6 @@ def generate_asset_evolution_graph(
     # Replace negative values with np.NaN
     df_evo = df_evo.where(df_evo >= 0)
 
-    # fig: matplotlib.figure.Figure # Removed: Use passed ax
-    # ax: matplotlib.axes.Axes # Removed: Use passed ax
-    # fig, ax = plt.subplots(figsize=(7, 3)) # Removed: Use passed ax
     if df_evo.empty:
         _ = ax.set_xlim(0, 1)  # Use passed ax
         _ = ax.set_ylim(0, 1)
@@ -404,8 +399,6 @@ def generate_asset_evolution_graph(
 
     ax.legend(
         title="Accounts",
-        # loc="center left",
-        # bbox_to_anchor=(1, 0, 0.5, 1),  # Position legend outside plot area
         fontsize="small",
     )
     return ax  # Return the axes
@@ -545,9 +538,6 @@ def generate_summary_report(
     output_dir: str,
     verbose: int = 0,
 ):
-    # Removed calls to individual graph functions
-    # generate_asset_distribution_graph(0, ledger, target_currency, conversion_args)
-    # generate_asset_evolution_graph(0, ledger, target_currency, conversion_args)
 
     # Prepare conversion args string for f-string insertion
     conv_args_str = " ".join(conversion_args)
@@ -1075,95 +1065,6 @@ def get_roi_data(
     return df_portfolio, dfs_benchmark
 
 
-def plot_roi_comparison(
-    ax: matplotlib.axes.Axes,
-    df_portfolio: pd.DataFrame | None,
-    dfs_benchmark: list[pd.DataFrame | None],
-    benchmark_tickers: list[str],
-    verbose: int = 0,
-) -> matplotlib.axes.Axes:
-    """Plot cumulative TWR comparison line chart on the given axes."""
-    if verbose >= 1:
-        print("Plotting cumulative TWR comparison lines...")
-
-    ax_line = ax
-
-    # Define colors and linestyles
-    PORTFOLIO_COLOR = "black"
-    BENCHMARK_COLORS = [
-        "C0",
-        "C1",
-        "C2",
-        "C3",
-    ]
-    BENCHMARK_LINESTYLES = [
-        "--",
-        "-.",
-        ":",
-        (0, (5, 3)),
-    ]  # Dashed, Dash-dot, Dotted, Custom Dash
-
-    has_data = False
-    if df_portfolio is not None and not df_portfolio.empty:
-        has_data = True
-        portfolio_label = "Portfolio Cumulative TWR"
-        portfolio_cum_twr = df_portfolio["twr_factor"].cumprod()
-        ax_line.plot(
-            df_portfolio["date"],
-            portfolio_cum_twr,
-            label=portfolio_label,
-            linewidth=2.0,  # Thicker portfolio line
-            color=PORTFOLIO_COLOR,
-            linestyle="-",
-        )
-        if not portfolio_cum_twr.empty:
-            final_twr_factor = portfolio_cum_twr.iloc[-1]
-            total_gain_percent = (final_twr_factor - 1) * 100
-            last_date = df_portfolio["date"].iloc[-1]
-            text_y_position = final_twr_factor * 1.02
-            ax_line.text(
-                last_date,
-                text_y_position,
-                f"Total: {total_gain_percent:+.1f}%",
-                fontsize=9,
-                color="black",
-                ha="right",
-                va="bottom",
-            )
-
-    for i, df_bm in enumerate(dfs_benchmark):
-        if df_bm is not None and not df_bm.empty:
-            has_data = True
-            ticker = benchmark_tickers[i]
-            benchmark_label = f"Benchmark ({ticker})"
-            benchmark_cum_twr = df_bm["twr_factor"].cumprod()
-            line_color = BENCHMARK_COLORS[i % len(BENCHMARK_COLORS)]
-            line_style = BENCHMARK_LINESTYLES[i % len(BENCHMARK_LINESTYLES)]
-            ax_line.plot(
-                df_bm["date"],
-                benchmark_cum_twr,
-                label=benchmark_label,
-                color=line_color,
-                linestyle=line_style,
-                linewidth=1.0,
-            )
-
-    if has_data:
-        ax_line.set_xlabel("Date")
-        ax_line.set_ylabel("Cumulative TWR (Factor)")
-        ax_line.tick_params(axis="y")  # Use default color
-
-        # --- Final Figure Adjustments ---
-        ax_line.set_title("Cumulative Performance")  # More specific title
-        ax_line.legend()  # Add legend directly here
-
-    elif verbose >= 1:
-        ax_line.text(0.5, 0.5, "No ROI data available", ha="center", va="center")
-        print("Skipping cumulative ROI line plot as no valid data was parsed.")
-
-    return ax_line  # Return the axes
-
-
 def generate_roi_report(  # Keep the old function signature for now, but it will just call the new ones
     ledger_file: str,
     data_dir: str,
@@ -1201,11 +1102,9 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
         df is not None and not df.empty for df in dfs_benchmark
     )
     if (df_portfolio is not None and not df_portfolio.empty) or has_any_benchmark_data:
-        fig, (ax_line, ax_bar) = plt.subplots(2, 1, figsize=(9, 7), sharex=False)
-
-        plot_roi_comparison(
-            ax_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
-        )
+        fig, ax_bar = plt.subplots(
+            1, 1, figsize=(9, 3.5), sharex=False
+        )  # Adjusted for single plot
 
         plot_yearly_twr_bars(
             ax_bar, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
@@ -1213,8 +1112,8 @@ def generate_roi_report(  # Keep the old function signature for now, but it will
 
         # --- Final Figure Adjustments for Standalone Plot ---
         fig.suptitle(
-            "Portfolio vs Benchmark Performance", fontsize=12, y=0.98
-        )  # Add overall title
+            "Portfolio vs Benchmark Yearly TWR", fontsize=12, y=0.98
+        )  # Add overall title, adjusted for single plot
         # Adjust layout to prevent overlap
         fig.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust rect to make space for suptitle
 
@@ -1286,16 +1185,16 @@ def generate_combined_figure(
     # Define a 3-row, 2-column grid
     # Row 0: Asset Evolution (spans 2 cols)
     # Row 1: Asset Distribution (col 0), Yearly TWR (col 1)
-    # Row 2: Cumulative TWR (spans 2 cols)
     # Adjust height/width ratios for desired emphasis
-    gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1], width_ratios=[1, 1.2])
+    gs = fig.add_gridspec(
+        2, 2, height_ratios=[1, 1], width_ratios=[1, 1.2]
+    )  # Adjusted to 2 rows
 
     ax_evol = fig.add_subplot(gs[0, :])  # Top row, spans both columns
-    ax_dist = fig.add_subplot(gs[1, 0])  # Middle row, left column
-    ax_roi_bars = fig.add_subplot(gs[1, 1])  # Middle row, right column
-    ax_roi_line = fig.add_subplot(gs[2, :])  # Bottom row, spans both columns
+    ax_dist = fig.add_subplot(gs[1, 0])  # Bottom row, left column
+    ax_roi_bars = fig.add_subplot(gs[1, 1])  # Bottom row, right column
 
-    # --- Plot Asset Distribution (Middle-Left) ---
+    # --- Plot Asset Distribution (Bottom-Left) ---
     try:
         # Use period=0 for overall distribution
         generate_asset_distribution_graph(
@@ -1344,15 +1243,7 @@ def generate_combined_figure(
             )
         except Exception as e:
             print(f"Error getting ROI data: {e}", file=sys.stderr)
-            # Add error text to both ROI plots if data fetching fails
-            ax_roi_line.text(
-                0.5,
-                0.5,
-                "Error getting ROI data",
-                ha="center",
-                va="center",
-                color="red",
-            )
+            # Add error text to ROI plot if data fetching fails
             ax_roi_bars.text(
                 0.5,
                 0.5,
@@ -1361,30 +1252,12 @@ def generate_combined_figure(
                 va="center",
                 color="red",
             )
-            ax_roi_line.set_title("Cumulative Performance")
             ax_roi_bars.set_title("Yearly TWR Comparison")
     else:
-        ax_roi_line.text(
-            0.5, 0.5, "ROI reporting disabled.", ha="center", va="center", color="grey"
-        )
-        ax_roi_line.set_title("Cumulative Performance")
         ax_roi_bars.text(
             0.5, 0.5, "ROI reporting disabled.", ha="center", va="center", color="grey"
         )
         ax_roi_bars.set_title("Yearly TWR Comparison")
-
-    # --- Plot Cumulative ROI Comparison (Bottom-Left) ---
-    if enable_roi_plots:
-        try:
-            plot_roi_comparison(
-                ax_roi_line, df_portfolio, dfs_benchmark, benchmark_tickers, verbose
-            )
-        except Exception as e:
-            print(f"Error generating cumulative ROI line plot: {e}", file=sys.stderr)
-            ax_roi_line.text(
-                0.5, 0.5, "Error generating plot", ha="center", va="center", color="red"
-            )
-            ax_roi_line.set_title("Cumulative Performance")  # Still add title
 
     # --- Plot Yearly TWR Bars (Bottom-Right) ---
     if enable_roi_plots:
