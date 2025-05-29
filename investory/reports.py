@@ -732,11 +732,14 @@ def plot_yearly_twr_bars(
 
     # Define colors
     PORTFOLIO_BAR_COLOR = "black"
+    # PlantUML old school inspired colors
     BENCHMARK_COLORS = [
-        "C0",
-        "C1",
-        "C2",
-        "C3",
+        "LightSkyBlue",
+        "LightGreen",
+        "LightPink",
+        "Orange",
+        "LightSalmon",
+        "LightCoral",
     ]
 
     # Adjust bar width and positions for multiple series
