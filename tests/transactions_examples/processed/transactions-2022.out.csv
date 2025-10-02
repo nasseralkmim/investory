@@ -1,0 +1,3 @@
+date,type,ticker,vol,price,name,CNPJ,epoch,transaction cost,inventory,inventory before split,inventory cost,average cost
+2022-01-03,sell,AAAA,-50,13.0,X,Y,1,-650.0,150,0.0,1650.0,11.0
+2022-01-05,buy,AAAA,50,9.0,X,Y,1,450.0,200,0.0,2100.0,10.5

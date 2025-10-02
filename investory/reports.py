@@ -1093,7 +1093,7 @@ def _get_price_on_or_before_date(
         # Start date is ~20 calendar days before to ensure we get data if target_date is a holiday/weekend.
         # yahooquery's history `end` parameter is inclusive.
         start_fetch_date = target_date - datetime.timedelta(days=20)
-        end_fetch_date = target_date  # Inclusive end date for yq
+        end_fetch_date = target_date + datetime.timedelta(days=1)  # non-inclusive end date for yq
 
         hist_data = ticker.history(
             start=start_fetch_date, end=end_fetch_date, adj_ohlc=True

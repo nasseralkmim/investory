@@ -254,7 +254,7 @@ This command reads the input CSVs, calculates the cost basis for the commodity (
 Let's say we bought some shares at this day:
 
 #+begin_src python :python /home/nasser/.venvs/general/bin/python
-import yahooquery as yq
+import ybankinplay as yq
 import datetime
 appl = yq.Ticker('aapl')
 print(appl.history(start=datetime.date(2023,1,1), end=datetime.date(2023,1,4)).close)
@@ -465,23 +465,36 @@ We would like to know the performance of all the live of our portfolio.
 Consider a simple ledger involving investments:
 
 #+begin_src ledger :tangle examples/reports-1/all.ledger
-2023-01-03 * Buy appl
-    assets:investments:stocks  1 aapl @ $125.07
+2022-12-30 * Buy appl
+    assets:investments:stocks  1 aapl @ $128.27
     assets:cash
 #+end_src
+
+#+begin_src python :python /home/nasser/.venvs/general/bin/python
+import yahooquery as yq
+import datetime
+appl = yq.Ticker('aapl')
+print(appl.history(start=datetime.date(2022,12,28), end=datetime.date(2023,1,1)).tail(1))
+#+end_src
+
+#+RESULTS:
+:                          open        high  ...    volume    adjclose
+: symbol date                                ...                      
+: aapl   2022-12-30  128.410004  129.949997  ...  77034200  128.268463
+: 
+: [1 rows x 6 columns]
 
 Reports are generated with the command.
 First we gather that price data that we need.
 
 #+begin_src sh :dir examples/reports-1 :results output :async yes :session appl-portfolio :results silent
 python -m investory.values --commodity aapl --output-dir data --begin 2022-12-01
-python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2022-12-01
-python -m investory.reports --ledger all.ledger --data-dir data --verbose 0 --currency $
+python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $
 #+end_src
 
 It generates a report for each year and a summary graphical report.
 
-#+attr_latex: :width .9\textwidth
+#+attr_latex: :width .75\textwidth
 [[file:examples/reports-1/reports/combined-overview.svg]]
 
 *** More elaborate example
