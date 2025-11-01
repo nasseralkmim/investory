@@ -884,6 +884,7 @@ def get_roi_data(
     conv_args_str = " ".join(conversion_args)  # For inserting into f-string commands
 
     dfs_benchmark: list[pd.DataFrame | None] = []
+    df_portfolio: pd.DataFrame | None = None
     first_trans_date: datetime.date | None = None
 
     # Get ledger start date once, used for all benchmarks
@@ -891,9 +892,9 @@ def get_roi_data(
         stats_output = run_command(f"hledger -f {ledger_file} stats", verbose=verbose)
         first_trans_date_str = None
         for line in stats_output.splitlines():
-            if line.strip().startswith("Transactions span") or line.strip().startswith(
-                "Date range"
-            ):
+            if line.strip().startswith("Txns span") or line.strip().startswith(
+                "Transactions span"
+            ) or line.strip().startswith("Date range"):
                 date_part = line.split(":", 1)[1].strip()
                 first_trans_date_str = date_part.split(" to ")[0].strip()
                 break
@@ -927,7 +928,6 @@ def get_roi_data(
 
     # --- 1. Portfolio ROI ---
     portfolio_roi_ascii: str | None = None
-    df_portfolio: pd.DataFrame | None = None
     try:
         # Find all .ledger files in data_dir (commodity prices)
         data_files_args = []
