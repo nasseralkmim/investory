@@ -68,7 +68,7 @@ def get_ledger_currencies(ledger_file: str, verbose: int = 0) -> set[str]:
     try:
         # Get all commodities declared or used
         commodities_output = run_command(
-            f"hledger -f {ledger_file} commodities", verbose
+            f"hledger -f {ledger_file} commodities", verbose=verbose
         )
         # Regex to find common currency symbols or 3-letter uppercase codes
         # Adjust regex as needed for the currencies you expect
