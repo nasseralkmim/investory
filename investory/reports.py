@@ -853,6 +853,40 @@ def plot_yearly_twr_bars(
     return ax
 
 
+def parse_ledger_stats_date_range(stats_output: str) -> str | None:
+    """Extract the first transaction date from hledger stats output.
+    
+    This function handles multiple hledger versions that use different formats:
+    - "Txns span" (modern hledger)
+    - "Transactions span" (older hledger)
+    - "Date range" (alternative format)
+    
+    Args:
+        stats_output: The output from 'hledger stats' command
+        
+    Returns:
+        The first transaction date as a string (YYYY-MM-DD), or None if not found
+        
+    Example:
+        >>> stats = "Txns span           : 2021-07-19 to 2025-04-16 (1367 days)"
+        >>> parse_ledger_stats_date_range(stats)
+        '2021-07-19'
+    """
+    for line in stats_output.splitlines():
+        line_stripped = line.strip()
+        # Check for various hledger version formats
+        if (line_stripped.startswith("Txns span") or 
+            line_stripped.startswith("Transactions span") or 
+            line_stripped.startswith("Date range")):
+            try:
+                date_part = line.split(":", 1)[1].strip()
+                first_date = date_part.split(" to ")[0].strip()
+                return first_date
+            except (IndexError, AttributeError):
+                continue
+    return None
+
+
 def get_roi_data(
     ledger_file: str,
     data_dir: str,
@@ -890,14 +924,7 @@ def get_roi_data(
     # Get ledger start date once, used for all benchmarks
     try:
         stats_output = run_command(f"hledger -f {ledger_file} stats", verbose=verbose)
-        first_trans_date_str = None
-        for line in stats_output.splitlines():
-            if line.strip().startswith("Txns span") or line.strip().startswith(
-                "Transactions span"
-            ) or line.strip().startswith("Date range"):
-                date_part = line.split(":", 1)[1].strip()
-                first_trans_date_str = date_part.split(" to ")[0].strip()
-                break
+        first_trans_date_str = parse_ledger_stats_date_range(stats_output)
         if not first_trans_date_str:
             raise ValueError(
                 "Could not parse first transaction date from hledger stats."
