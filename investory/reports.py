@@ -731,7 +731,7 @@ def plot_yearly_twr_bars(
     num_series = len(combined_df.columns)
 
     # Define colors
-    PORTFOLIO_BAR_COLOR = "black"
+    PORTFOLIO_BAR_COLOR = "steelblue"
     # PlantUML old school inspired colors
     BENCHMARK_COLORS = [
         "LightSkyBlue",
