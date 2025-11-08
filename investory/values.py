@@ -10,6 +10,10 @@ The commodities list can be obtained with:
 
 Some commodities tickers need a specific suffix according to Yahoo database.
 For example, Brazilian stocks need a '.SA'.
+
+This script fetches daily (business day) closing prices from Yahoo Finance.
+Daily prices ensure accurate valuations around corporate actions like stock splits,
+preventing phantom gains/losses in TWR calculations.
 """
 
 import numpy as np
@@ -59,8 +63,28 @@ class Commodity:
 def adjust_for_split(
     date: str, value: float, split_ratio: float, split_date: datetime.date
 ) -> float:
-    """Adjust value because of split."""
-    # check if date is before split_date
+    """Adjust historical prices to reflect pre-split prices.
+    
+    Yahoo Finance returns split-adjusted prices for all historical dates.
+    For dates on or before the split date, we need to "un-adjust" them by
+    multiplying by the split ratio to get the actual pre-split price.
+    
+    Example: For a 4:1 split (1 old share becomes 4 new shares):
+        - split_ratio = 4.0 (from ratio_to/ratio_from = 4/1)
+        - Yahoo returns pre-split dates with prices divided by 4
+        - We multiply by 4 to restore the original pre-split price
+        - Post-split dates are already correct and left unchanged
+    
+    Args:
+        date: Date string in YYYY-MM-DD format
+        value: Price from Yahoo Finance
+        split_ratio: Ratio to apply (ratio_to / ratio_from)
+        split_date: Date when the split occurred
+    
+    Returns:
+        Adjusted price value
+    """
+    # Check if date is before or on split_date
     if datetime.datetime.strptime(date, "%Y-%m-%d").date() <= split_date:
         value = value * split_ratio
 
@@ -249,7 +273,7 @@ if __name__ == "__main__":
             # fetch data one early to avoid different date time formats in the dataframe
             end_fetch_date = datetime.date.today() - datetime.timedelta(days=1)
             history_data = ticker.history(
-                start=initial_date, end=end_fetch_date, adj_ohlc=True
+                start=initial_date, end=end_fetch_date, adj_ohlc=False
             )
 
         # Ensure the index is just the date part for easier lookup
@@ -309,8 +333,8 @@ if __name__ == "__main__":
                     )
                 pass  # File doesn't exist yet, nothing is processed
 
-        # Generate target month-end dates within the fetched range
-        target_dates = pd.date_range(initial_date, datetime.date.today(), freq="BME")
+        # Generate target business day dates within the fetched range
+        target_dates = pd.date_range(initial_date, datetime.date.today(), freq="B")
 
         # Find the closest available historical data points for each target date
         # Use reindex with forward fill to find the last known price ON or BEFORE the target date
@@ -329,7 +353,7 @@ if __name__ == "__main__":
 
         if verbose_level >= 2:
             print(
-                f"Target month-end dates range: {target_dates.min()} to {target_dates.max()}"
+                f"Target business day dates range: {target_dates.min()} to {target_dates.max()}"
             )
             print(
                 f"Relevant data shape before filtering processed dates: {relevant_data.shape}"
@@ -367,7 +391,7 @@ if __name__ == "__main__":
         if not relevant_data.empty:
             if verbose_level >= 1:
                 print(
-                    f"Writing {len(relevant_data)} new month-end entries to {commodity.file}..."
+                    f"Writing {len(relevant_data)} new daily price entries to {commodity.file}..."
                 )
             with open(commodity.file, "a") as f:
                 for date_ts, row in relevant_data.iterrows():
@@ -404,7 +428,7 @@ if __name__ == "__main__":
                         # break
         else:
             if verbose_level >= 1:
-                print("No new month-end data to write.")
+                print("No new daily price data to write.")
 
     # --- Get only the price from the latest working date if requested ---
     if args.latest_price and not history_data.empty:
