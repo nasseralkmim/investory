@@ -2,17 +2,34 @@
 [[file:investory_logo.svg]]
 #+end_center
 
-Simple collection python modules to enhance =ledger= applications for portfolio management.
+Simple collection of Python modules to enhance =hledger= applications for portfolio management.
 While tools like =ledger= and =hledger= are excellent for tracking overall investment accounts, they often lack specific conveniences for detailed capital gains calculations and reporting, especially when dealing with multiple lots and cost basis methods.
 This project aims to fill some of those gaps.
 
 * Features
 
-1. Fetch historical market prices for commodities/stocks using Yahoo Finance.
-2. Adjust prices for stock splits.
-3. Generate ledger price database entries (P directives).
-4. Calculate cost basis for transactions using average cost method (via `costbasis` module).
-5. Generate portfolio performance reports (requires `hledger`).
+** Price Data Management (=prices= module)
+1. Automatically detect commodities from ledger files
+2. Fetch historical market prices using Yahoo Finance
+3. Cache prices to ledger format (P directives)
+4. Adjust for stock splits
+5. Handle business-day price interpolation
+
+** ROI Analysis (=roi= module)
+1. Calculate Time-Weighted Return (TWR) for portfolios
+2. Compare portfolio performance against benchmarks (S&P 500, etc.)
+3. Generate yearly return visualizations
+4. Automatically ensure price data is available
+
+** Reports Generation (=reports= module)
+1. Generate balance sheets and income statements
+2. Create asset distribution and evolution graphs
+3. Produce combined overview figures
+4. Support for multi-currency portfolios
+
+** Cost Basis Calculation (=costbasis= module)
+1. Calculate cost basis using average cost method
+2. Process transaction files for tax reporting
 
 * Installing
 
@@ -40,7 +57,58 @@ cd ~/.local/src/investory/
 :header-args:sh+: :prologue source ~/.venvs/general/bin/activate
 :header-args:python+: :python /home/nasser/.venvs/general/bin/python
 :END:
-** Values module
+
+** Quick Start
+
+The easiest way to use investory is to simply run the reports module.
+It will automatically detect your assets and fetch missing prices.
+
+#+begin_src sh
+python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 1
+#+end_src
+
+This single command will:
+1. Detect all investment commodities in your ledger
+2. Automatically fetch missing prices from Yahoo Finance
+3. Cache prices to the data directory
+4. Generate comprehensive reports including ROI analysis
+
+** Prices module
+
+The prices module handles automatic price data management.
+You rarely need to call it directly, as the reports module uses it automatically.
+
+*** Manual price fetching
+
+Fetch prices for a specific commodity:
+
+#+begin_src sh :dir examples/values :results output :async yes :session basic-values
+python -m investory.prices --commodity AAPL --begin 2023-01-01 --output-dir data
+head data/AAPL.ledger
+rm -rf data
+#+end_src
+
+*** Automatic price management (recommended)
+
+The reports module automatically ensures all assets have price data:
+
+#+begin_src python
+from investory import prices
+
+# Automatically detect and fetch prices for all assets
+price_files = prices.ensure_price_data(
+    ledger_file="all.ledger",
+    data_dir="./data",
+    ticker_map={"VWCE": "VWCE.DE"},  # Optional: map commodities to Yahoo tickers
+    currency_map={"VWCE": "€"}        # Optional: specify currencies
+)
+#+end_src
+
+** Values module (legacy, use prices module instead)
+
+The original =values= module is still available for backward compatibility,
+but the new =prices= module is recommended for all new usage.
+
 *** Basic functionality
 
 Get commodity (given as yahoo ticker) price for each month.
@@ -248,6 +316,28 @@ rm -rf processed/
 This command reads the input CSVs, calculates the cost basis for the commodity ('AAAA'), and saves the results into a file within the `processed/` directory.
 
 ** Reports
+*** Overview
+
+The reports module generates comprehensive portfolio analysis including:
+- Balance sheets and income statements
+- Asset distribution and evolution graphs
+- Time-Weighted Return (TWR) analysis
+- Benchmark comparisons
+
+*** Automatic workflow (recommended)
+
+The simplest way to generate reports is to run:
+
+#+begin_src sh
+python -m investory.reports --ledger all.ledger --data-dir data --currency $ -v 1
+#+end_src
+
+This automatically:
+1. Detects all commodities in your ledger
+2. Fetches missing prices from Yahoo Finance
+3. Generates yearly text reports
+4. Creates comprehensive visualization with ROI analysis
+
 *** Toy example for ROI
 **** Initial investment
 
@@ -287,26 +377,19 @@ print(appl.history(start=datetime.date(2023,1,31), end=datetime.date(2023,2,1), 
 : aapl    2023-01-31    142.631622
 : Name: close, dtype: float64
 
-We can record prices over time with:
+Price data is now managed automatically by the reports module.
+The old manual method using =investory.values= is shown below for reference,
+but is no longer necessary:
 
 #+begin_src sh :dir examples/reports-1/data
-python -m investory.values --commodity aapl --begin 2023-01-01
-head aapl.ledger
-#+end_src
+# Legacy method (not required anymore)
+# python -m investory.values --commodity aapl --begin 2023-01-01
+# head aapl.ledger
 
-#+RESULTS:
-#+begin_example
-P 2022-12-30 "aapl" $128.268448
-P 2023-01-31 "aapl" $142.444824
-P 2023-02-28 "aapl" $145.747131
-P 2023-03-31 "aapl" $163.039825
-P 2023-04-28 "aapl" $167.765884
-P 2023-05-31 "aapl" $175.492905
-P 2023-06-30 "aapl" $192.047180
-P 2023-07-31 "aapl" $194.502609
-P 2023-08-31 "aapl" $186.258820
-P 2023-09-29 "aapl" $169.741699
-#+end_example
+# New method (automatic)
+# Just run reports - prices are fetched automatically
+python -m investory.reports --ledger all.ledger --data-dir data --currency $ -v 1
+#+end_src
 
 **** Portfolio return
 
@@ -484,13 +567,23 @@ print(appl.history(start=datetime.date(2022,12,28), end=datetime.date(2023,1,1))
 : 
 : [1 rows x 6 columns]
 
-Reports are generated with the command.
-First we gather that price data that we need.
+Reports are generated automatically with a single command.
+No need to manually gather price data - the module does it for you:
 
 #+begin_src sh :dir examples/reports-1 :results output :async yes :session appl-portfolio :results silent
-python -m investory.values --commodity aapl --output-dir data --begin 2022-12-01
-python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $
+# Old way (manual):
+# python -m investory.values --commodity aapl --output-dir data --begin 2022-12-01
+# python -m investory.reports --ledger all.ledger --data-dir data --verbose 2 --currency $
+
+# New way (automatic):
+python -m investory.reports --ledger all.ledger --data-dir data --currency $ -v 1
 #+end_src
+
+The module automatically:
+- Detects that you have AAPL in your ledger
+- Fetches historical prices from Yahoo Finance
+- Caches them to data/AAPL.ledger
+- Generates comprehensive reports
 
 It generates a report for each year and a summary graphical report.
 
@@ -577,9 +670,58 @@ do
 done
 #+end_src
 
-Finally, we collect the price data using the =values= module and call the =reports= module.
+Finally, generate comprehensive reports with benchmark comparisons.
+
+The reports module now automatically detects and fetches all necessary prices:
 
 #+begin_src sh :async yes :session reports :results silent
+# New simplified workflow - automatic price fetching
+python -m investory.reports \
+    --ledger all.ledger \
+    --data-dir data \
+    --currency € \
+    --benchmark-ticker ^spx ^bvsp ^ndx \
+    -v 1
+#+end_src
+
+The module automatically:
+1. Detects VWCE and other commodities from your ledger
+2. Maps commodities to Yahoo tickers (can be customized via ticker_map)
+3. Fetches all necessary price data including benchmarks
+4. Caches prices to data/ directory
+5. Generates comprehensive analysis
+
+For manual control over ticker mapping (optional):
+
+#+begin_src python
+from investory import prices, reports
+
+# Optional: Define custom ticker mappings
+ticker_map = {
+    "VWCE": "VWCE.DE",
+    "$": "USDEUR=X",
+    "R$": "BRLUSD=X"
+}
+
+currency_map = {
+    "VWCE": "€",
+    "$": "€",
+    "R$": "$"
+}
+
+# Ensure prices with custom mappings
+price_files = prices.ensure_price_data(
+    ledger_file="all.ledger",
+    data_dir="data",
+    ticker_map=ticker_map,
+    currency_map=currency_map
+)
+#+end_src
+
+Legacy manual method (for reference only):
+
+#+begin_src sh :async yes :session reports :results silent :eval never
+# Old manual method - no longer needed
 python -m investory.values --commodity VWCE --yahooticker vwce.de --output-dir data --begin 2021-01-01 --currency €
 python -m investory.values --commodity ^spx --yahooticker ^spx --output-dir data --begin 2021-01-01
 python -m investory.values --commodity $ --yahooticker USDEUR=X --output-dir data --begin 2021-01-01 --currency €
@@ -589,4 +731,188 @@ python -m investory.reports --ledger all.ledger --data-dir data --currency € -
 
 #+attr_latex: :width .9\textwdith
 [[file:examples/reports-2/reports/combined-overview.svg]]
+
+* Module Architecture
+
+** Overview
+
+Investory is organized into focused modules with clear separation of concerns:
+
+| Module        | Purpose                                | Lines | Key Functions                           |
+|---------------+----------------------------------------+-------+-----------------------------------------|
+| =prices.py=   | Price data management                  |   358 | =ensure_price_data()=, =PriceCache=     |
+| =roi.py=      | ROI calculation and visualization      |   592 | =get_roi_data()=, =plot_yearly_twr_bars()= |
+| =reports.py=  | Balance sheets and income reports      |   902 | =generate_combined_figure()=            |
+| =costbasis.py= | Tax cost basis calculations           |   334 | Cost basis computation                  |
+
+** prices module
+
+Handles automatic commodity price management:
+
+- Auto-detects investment commodities from ledger files
+- Fetches historical prices from Yahoo Finance
+- Caches prices in ledger format (P directives)
+- Handles stock splits and business-day interpolation
+- Filters out currency symbols automatically
+
+**Main API:**
+#+begin_src python
+from investory import prices
+
+# Automatic price management
+price_files = prices.ensure_price_data(
+    ledger_file="all.ledger",
+    data_dir="./data"
+)
+
+# Manual control with custom mappings
+cache = prices.PriceCache(
+    commodity="VWCE",
+    yahoo_ticker="VWCE.DE",
+    currency="€",
+    output_dir="./data"
+)
+count = cache.fetch_and_cache()
+#+end_src
+
+** roi module
+
+Calculates and visualizes investment returns:
+
+- Portfolio Time-Weighted Return (TWR) using hledger
+- Benchmark TWR from Yahoo Finance
+- Yearly return comparisons
+- Automatically ensures price data availability
+
+**Main API:**
+#+begin_src python
+from investory import roi
+
+# Get ROI data
+df_portfolio, benchmark_series = roi.get_roi_data(
+    ledger_file="all.ledger",
+    data_dir="./data",
+    conversion_args=[],
+    benchmark_tickers=["SPY", "^GSPC"]
+)
+
+# Generate standalone ROI report
+roi.generate_roi_report(
+    ledger_file="all.ledger",
+    data_dir="./data",
+    conversion_args=[],
+    output_dir="./reports",
+    benchmark_tickers=["SPY"]
+)
+#+end_src
+
+** reports module
+
+Generates comprehensive portfolio reports:
+
+- Yearly balance sheets and income statements
+- Asset distribution pie charts
+- Asset evolution over time
+- Combined overview figure with ROI analysis
+- Uses =roi= module for performance metrics
+- Uses =prices= module for automatic data management
+
+**Main API:**
+#+begin_src python
+from investory import reports
+
+# Python API
+reports.generate_combined_figure(
+    ledger_file="all.ledger",
+    data_dir="./data",
+    target_currency="€",
+    conversion_args=[],
+    output_dir="./reports",
+    benchmark_tickers=["SPY"],
+    enable_roi_plots=True
+)
+#+end_src
+
+** Logging instead of verbose flags
+
+All modules use Python's standard logging framework:
+
+#+begin_src sh
+# WARNING level (silent, only errors)
+python -m investory.reports --ledger all.ledger -v 0
+
+# INFO level (normal output)
+python -m investory.reports --ledger all.ledger -v 1
+
+# DEBUG level (detailed output)
+python -m investory.reports --ledger all.ledger -v 2
+#+end_src
+
+In Python code:
+#+begin_src python
+import logging
+logging.basicConfig(level=logging.INFO)
+
+from investory import prices
+# All informational messages will be logged
+price_files = prices.ensure_price_data("all.ledger", "./data")
+#+end_src
+
+* Migration from Earlier Versions
+
+** Summary of changes
+
+- =values.py= module renamed to =prices.py= with enhanced API
+- ROI functions moved from =reports.py= to new =roi.py= module
+- Automatic price fetching - no manual =values.py= runs needed
+- Standard Python logging instead of verbose flags
+- All existing functionality preserved
+
+** Before (manual workflow)
+
+#+begin_src sh
+# Fetch prices for each commodity manually
+python -m investory.values --commodity AAPL --output-dir data
+python -m investory.values --commodity MSFT --output-dir data
+python -m investory.values --commodity VWCE --yahooticker VWCE.DE --output-dir data
+
+# Generate reports
+python -m investory.reports --ledger all.ledger --data-dir data --verbose 2
+#+end_src
+
+** After (automatic workflow)
+
+#+begin_src sh
+# Just generate reports - prices fetched automatically
+python -m investory.reports --ledger all.ledger --data-dir data -v 1
+#+end_src
+
+** Code migration
+
+If you imported ROI functions directly:
+
+#+begin_src python
+# Before
+from investory import reports
+df = reports.parse_hledger_roi_ascii(data)
+df_portfolio, benchmarks = reports.get_roi_data(...)
+
+# After
+from investory import roi
+df = roi.parse_hledger_roi_ascii(data)
+df_portfolio, benchmarks = roi.get_roi_data(...)
+#+end_src
+
+If you used verbose parameters:
+
+#+begin_src python
+# Before
+some_function(verbose=2)
+
+# After (logging configured at module level)
+import logging
+logging.basicConfig(level=logging.DEBUG)
+some_function()
+#+end_src
+
 
