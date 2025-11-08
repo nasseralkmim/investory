@@ -1,0 +1,591 @@
+"""Calculate and visualize Return on Investment (ROI) for portfolios.
+
+This module provides ROI analysis functionality:
+- Calculate Time-Weighted Return (TWR) for portfolios using hledger
+- Fetch benchmark data from Yahoo Finance
+- Compare portfolio performance against benchmarks
+- Generate ROI visualization plots
+"""
+
+import datetime
+import logging
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import matplotlib.axes
+import matplotlib.pyplot as plt
+import pandas as pd
+import yahooquery as yq
+
+from . import prices
+
+logger = logging.getLogger(__name__)
+
+
+def run_hledger_command(command: str, stdin_data: str | None = None) -> str:
+    """Run a hledger command and return output."""
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            input=stdin_data,
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {command}")
+        logger.error(f"Error: {e.stderr}")
+        raise
+
+
+def parse_ledger_stats_date_range(stats_output: str) -> str | None:
+    """Extract the first transaction date from hledger stats output.
+
+    Handles multiple hledger versions with different formats:
+    - "Txns span" (modern hledger)
+    - "Transactions span" (older hledger)
+    - "Date range" (alternative format)
+
+    Returns:
+        The first transaction date as a string (YYYY-MM-DD), or None if not found
+    """
+    for line in stats_output.splitlines():
+        line_stripped = line.strip()
+        if (
+            line_stripped.startswith("Txns span")
+            or line_stripped.startswith("Transactions span")
+            or line_stripped.startswith("Date range")
+        ):
+            try:
+                date_part = line.split(":", 1)[1].strip()
+                first_date = date_part.split(" to ")[0].strip()
+                return first_date
+            except (IndexError, AttributeError):
+                continue
+    return None
+
+
+def parse_hledger_roi_ascii(ascii_data: str) -> pd.DataFrame | None:
+    """Parse ASCII table output from 'hledger roi'."""
+    lines = ascii_data.strip().split("\n")
+    header: list[str] = []
+    data: list[list[str]] = []
+    header_found = False
+    data_started = False
+
+    try:
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Find header row (contains 'Begin', 'End', 'TWR/period')
+            if (
+                "Begin" in line
+                and "End" in line
+                and "TWR/period" in line
+                and not header_found
+            ):
+                header = [h.strip() for h in line.strip("|").split("|")]
+                header_found = True
+                logger.debug(f"Found header: {header}")
+                continue
+
+            # Skip separator lines like +===... or +---...
+            if line.startswith("+===") or line.startswith("+---"):
+                if header_found and not data_started:
+                    data_started = True
+                    logger.debug("Found header separator, starting data collection")
+                elif data_started:
+                    logger.debug("Found footer separator, stopping data collection")
+                    break
+                continue
+
+            # Process data rows
+            if data_started and line.startswith("|"):
+                row_data = [d.strip() for d in line.strip("|").split("|")]
+                if len(row_data) == len(header):
+                    data.append(row_data)
+                else:
+                    logger.warning(
+                        f"Skipping row due to column mismatch. Expected {len(header)}, "
+                        f"got {len(row_data)}. Row: '{line}'"
+                    )
+
+        if not header or not data:
+            logger.error("Could not find header or data rows in hledger roi output")
+            logger.debug(f"ASCII Data received: {ascii_data[:500]}...")
+            return None
+
+        df = pd.DataFrame(data, columns=header)
+
+        # Select and rename relevant columns
+        if "End" not in df.columns or "TWR/period" not in df.columns:
+            raise KeyError(
+                "Required columns 'End' or 'TWR/period' not found in parsed data"
+            )
+
+        df = df[["End", "TWR/period"]]
+        df = df.rename(columns={"End": "date", "TWR/period": "twr_percent"})
+
+        # Convert date column to datetime objects
+        df["date"] = pd.to_datetime(df["date"])
+
+        # Convert TWR percentage string to numeric factor
+        df["twr_percent"] = df["twr_percent"].str.rstrip("%")
+        df["twr_percent"] = pd.to_numeric(df["twr_percent"], errors="coerce")
+        df = df.dropna(subset=["twr_percent"])
+        df["twr_factor"] = df["twr_percent"] / 100 + 1
+
+        df = df.drop(columns=["twr_percent"])
+        df = df.sort_values(by="date").reset_index(drop=True)
+        return df
+
+    except (KeyError, ValueError, IndexError, Exception) as e:
+        logger.error(f"Error parsing hledger roi ASCII data: {e}")
+        logger.debug(f"ASCII Data received: {ascii_data[:500]}...")
+        return None
+
+
+def get_benchmark_price_on_date(
+    ticker: str, target_date: datetime.date
+) -> float | None:
+    """Fetch closing price for a benchmark ticker on or before a specific date."""
+    try:
+        ticker_obj = yq.Ticker(ticker, asynchronous=False)
+
+        # Fetch data for a window ending on target_date
+        start_fetch_date = target_date - datetime.timedelta(days=20)
+        end_fetch_date = target_date + datetime.timedelta(days=1)
+
+        hist_data = ticker_obj.history(
+            start=start_fetch_date, end=end_fetch_date, adj_ohlc=True
+        )
+
+        if isinstance(hist_data, dict):
+            if ticker not in hist_data or hist_data[ticker].empty:
+                logger.debug(
+                    f"No historical data for {ticker} (target date {target_date})"
+                )
+                return None
+            hist = hist_data[ticker]
+        elif isinstance(hist_data, pd.DataFrame):
+            hist = hist_data
+        else:
+            logger.debug(
+                f"Unexpected data type {type(hist_data)} from yahooquery for {ticker}"
+            )
+            return None
+
+        if hist.empty or "close" not in hist.columns:
+            logger.debug(
+                f"No historical data or 'close' column for {ticker} (target {target_date})"
+            )
+            return None
+
+        if isinstance(hist.index, pd.MultiIndex):
+            if ticker in hist.index.get_level_values(0):
+                hist = hist.loc[ticker]
+            else:
+                logger.debug(
+                    f"Ticker {ticker} not found in MultiIndex for target {target_date}"
+                )
+                return None
+
+        hist = hist.sort_index()
+
+        if hist.empty:
+            logger.debug(
+                f"No historical data after index handling for {ticker} (target {target_date})"
+            )
+            return None
+
+        # Get the last available closing price
+        last_close = hist["close"].iloc[-1]
+
+        if pd.isna(last_close):
+            logger.debug(f"Last closing price is NaN for {ticker} (target {target_date})")
+            return None
+
+        actual_price_date_str = "Unknown Date"
+        if isinstance(hist.index, pd.DatetimeIndex) and not hist.index.empty:
+            actual_price_date = hist.index[-1]
+            if isinstance(actual_price_date, pd.Timestamp):
+                actual_price_date = actual_price_date.date()
+
+            actual_price_date_str = actual_price_date.strftime("%Y-%m-%d")
+            if actual_price_date > target_date:
+                logger.warning(
+                    f"Fetched price for {ticker} is for {actual_price_date_str}, "
+                    f"which is after target {target_date}"
+                )
+
+        logger.debug(
+            f"Price for {ticker} (target {target_date}, actual {actual_price_date_str}): "
+            f"{last_close:.2f}"
+        )
+
+        return float(last_close)
+
+    except AttributeError as ae:
+        logger.debug(
+            f"AttributeError for {ticker} (target {target_date}): {ae}"
+        )
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching price for {ticker} (target {target_date}): {e}")
+        return None
+
+
+def calculate_benchmark_twr(
+    ticker: str, years: list[int]
+) -> pd.Series | None:
+    """Calculate yearly TWR for a benchmark using EOY price comparisons."""
+    yearly_returns_data: list[dict[str, float | int]] = []
+
+    logger.info(
+        f"Calculating yearly TWR for benchmark: {ticker} using Yahoo Finance EOY prices"
+    )
+
+    current_calendar_year = datetime.datetime.now().year
+    for year in years:
+        # Determine target date for current period's price
+        if year == current_calendar_year:
+            target_date_current = datetime.date.today()
+            price_label = "YTD"
+        else:
+            target_date_current = datetime.date(year, 12, 31)
+            price_label = f"EOY({year})"
+
+        price_current = get_benchmark_price_on_date(ticker, target_date_current)
+
+        # Get EOY price for previous year
+        target_date_prev = datetime.date(year - 1, 12, 31)
+        price_prev = get_benchmark_price_on_date(ticker, target_date_prev)
+
+        if price_current is not None and price_prev is not None:
+            if price_prev != 0:
+                yearly_return_pct = ((price_current / price_prev) - 1.0) * 100.0
+                yearly_returns_data.append(
+                    {"year": year, "twr_percent": yearly_return_pct}
+                )
+                logger.debug(
+                    f"  Benchmark {ticker} TWR for {year}: {yearly_return_pct:.2f}% "
+                    f"(P_{price_label}={price_current:.2f}, P_EOY({year-1})={price_prev:.2f})"
+                )
+            else:
+                logger.warning(
+                    f"Previous year ({year - 1}) EOY price for {ticker} is zero. "
+                    f"Skipping TWR for {year}"
+                )
+        else:
+            logger.warning(
+                f"Could not get EOY prices for {ticker} for year {year}"
+            )
+
+    if yearly_returns_data:
+        df_yearly = pd.DataFrame(yearly_returns_data).set_index("year")
+        series = df_yearly["twr_percent"]
+        series.name = ticker
+        return series
+    else:
+        logger.warning(f"No yearly TWR data calculated for benchmark: {ticker}")
+        return None
+
+
+def get_portfolio_roi(
+    ledger_file: str,
+    price_files: list[str],
+    conversion_args: list[str],
+    investment_account: str = "assets:investments",
+    pnl_account: str = "income:financial",
+    begin_date: str | None = None,
+) -> pd.DataFrame | None:
+    """Calculate portfolio ROI using hledger."""
+    logger.info("Calculating portfolio ROI...")
+
+    # Build hledger roi command
+    base_roi_args = [
+        "roi",
+        "--investment",
+        investment_account,
+        "--profit-loss",
+        pnl_account,
+        "--monthly",
+        "--infer-market-prices",
+        "--end",
+        "today",
+    ]
+
+    # Add begin date
+    if begin_date:
+        base_roi_args.extend(["--begin", begin_date])
+    else:
+        # Get first transaction date from ledger
+        try:
+            stats_output = run_hledger_command(f"hledger -f {ledger_file} stats")
+            first_date = parse_ledger_stats_date_range(stats_output)
+            if first_date:
+                base_roi_args.extend(["--begin", first_date])
+            else:
+                logger.warning("Could not determine ledger start date")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Could not get ledger stats: {e}")
+
+    # Build complete command
+    price_args = " ".join([f"-f {pf}" for pf in price_files])
+    conv_args = " ".join(conversion_args)
+    roi_args = " ".join(base_roi_args)
+
+    command = (
+        f"hledger -f {ledger_file} {price_args} {conv_args} {roi_args} --value=then,$"
+    )
+
+    try:
+        roi_ascii = run_hledger_command(command)
+        df_portfolio = parse_hledger_roi_ascii(roi_ascii)
+        return df_portfolio
+    except (subprocess.CalledProcessError, IOError) as e:
+        logger.error(f"Error getting or parsing portfolio ROI: {e}")
+        return None
+
+
+def get_roi_data(
+    ledger_file: str,
+    data_dir: str | Path,
+    conversion_args: list[str],
+    benchmark_tickers: list[str],
+    investment_account: str = "assets:investments",
+    pnl_account: str = "income:financial",
+    begin_date: str | None = None,
+) -> tuple[pd.DataFrame | None, list[pd.Series | None]]:
+    """Fetch and calculate ROI data for portfolio and benchmarks.
+
+    Returns:
+        Tuple of (portfolio_df, list of benchmark_series)
+    """
+    logger.info(
+        f"Fetching ROI data, comparing with benchmarks: {benchmark_tickers}"
+    )
+
+    # Ensure price data is available
+    price_files = prices.ensure_price_data(ledger_file, data_dir)
+    logger.info(f"Using {len(price_files)} price data files")
+
+    # Get portfolio ROI
+    df_portfolio = get_portfolio_roi(
+        ledger_file=ledger_file,
+        price_files=price_files,
+        conversion_args=conversion_args,
+        investment_account=investment_account,
+        pnl_account=pnl_account,
+        begin_date=begin_date,
+    )
+
+    # Determine years for benchmark calculation
+    years_for_calculation: list[int] = []
+    if df_portfolio is not None and not df_portfolio.empty:
+        min_year = df_portfolio["date"].dt.year.min()
+        max_year = df_portfolio["date"].dt.year.max()
+        years_for_calculation = list(range(min_year, max_year + 1))
+    else:
+        # Fallback to current year
+        current_year = datetime.datetime.now().year
+        start_year = current_year
+        if begin_date:
+            try:
+                start_year = datetime.datetime.strptime(begin_date, "%Y-%m-%d").year
+            except ValueError:
+                pass
+        years_for_calculation = list(range(start_year, current_year + 1))
+
+    logger.debug(f"Years for benchmark calculations: {years_for_calculation}")
+
+    # Calculate benchmark TWRs
+    benchmark_series: list[pd.Series | None] = []
+    for ticker in benchmark_tickers:
+        series = calculate_benchmark_twr(ticker, years_for_calculation)
+        benchmark_series.append(series)
+
+    return df_portfolio, benchmark_series
+
+
+def calculate_yearly_twr(df: pd.DataFrame | None, name: str) -> pd.Series | None:
+    """Calculate yearly TWR percentage gain from monthly TWR factors."""
+    if df is None or df.empty:
+        logger.info(f"No data provided for {name} yearly TWR calculation")
+        return None
+    try:
+        df["date"] = pd.to_datetime(df["date"])
+        df["year"] = df["date"].dt.year
+        yearly_twr_factor = df.groupby("year")["twr_factor"].prod()
+        yearly_gain_percent = (yearly_twr_factor - 1) * 100
+        return yearly_gain_percent
+    except Exception as e:
+        logger.error(f"Error calculating yearly TWR for {name}: {e}")
+        return None
+
+
+def plot_yearly_twr_bars(
+    ax: matplotlib.axes.Axes,
+    df_portfolio: pd.DataFrame | None,
+    benchmark_series: list[pd.Series | None],
+    benchmark_tickers: list[str],
+) -> matplotlib.axes.Axes:
+    """Plot yearly TWR comparison as a bar chart."""
+    logger.info("Plotting yearly TWR bars...")
+
+    combined_df = pd.DataFrame()
+    portfolio_yearly = calculate_yearly_twr(df_portfolio, "Portfolio")
+    if portfolio_yearly is not None:
+        combined_df["Portfolio"] = portfolio_yearly
+
+    valid_benchmarks_data = []
+    for i, bm_series in enumerate(benchmark_series):
+        if bm_series is not None and not bm_series.empty:
+            ticker = benchmark_tickers[i]
+            combined_df[f"Benchmark ({ticker})"] = bm_series
+            valid_benchmarks_data.append({"ticker": ticker, "data": bm_series})
+        elif bm_series is None:
+            logger.info(f"No yearly TWR data for benchmark: {benchmark_tickers[i]}")
+
+    if combined_df.empty:
+        ax.text(0.5, 0.5, "No yearly ROI data available", ha="center", va="center")
+        ax.set_title("Yearly TWR (%)")
+        logger.info("Skipping yearly TWR bar plot as no valid data was calculated")
+        return ax
+
+    # Bar plot setup
+    years = combined_df.index.unique()
+    n_years = len(years)
+    num_series = len(combined_df.columns)
+
+    # Colors
+    PORTFOLIO_BAR_COLOR = "steelblue"
+    BENCHMARK_COLORS = [
+        "LightSkyBlue",
+        "LightGreen",
+        "LightPink",
+        "Orange",
+        "LightSalmon",
+        "LightCoral",
+    ]
+
+    total_width_for_group = 0.8
+    bar_width = total_width_for_group / num_series if num_series > 0 else 0
+    index = range(n_years)
+
+    for i, col_name in enumerate(combined_df.columns):
+        series_data = combined_df[col_name].reindex(years).fillna(0)
+        positions = [
+            x - total_width_for_group / 2 + (i + 0.5) * bar_width for x in index
+        ]
+
+        gains = series_data.values
+
+        if col_name == "Portfolio":
+            bar_color = PORTFOLIO_BAR_COLOR
+            label = "Portfolio"
+        else:
+            ticker_match = re.search(r"Benchmark \((.*?)\)", col_name)
+            ticker_label = ticker_match.group(1) if ticker_match else col_name
+
+            bm_index = -1
+            for bm_idx, bm_data in enumerate(valid_benchmarks_data):
+                if bm_data["ticker"] == ticker_label:
+                    bm_index = bm_idx
+                    break
+
+            bar_color = BENCHMARK_COLORS[bm_index % len(BENCHMARK_COLORS)]
+            label = f"Benchmark ({ticker_label})"
+
+        bars = ax.bar(positions, gains, bar_width, label=label, color=bar_color)
+
+        # Label colors
+        label_colors = ["green" if g >= 0 else "red" for g in gains]
+        labels_list = ax.bar_label(bars, fmt="%.1f%%", padding=3, fontsize=8)
+
+        if labels_list:
+            for label_idx, label_item in enumerate(labels_list):
+                if label_idx < len(label_colors):
+                    label_item.set_color(label_colors[label_idx])
+
+    # Final adjustments
+    ax.set_ylabel("Yearly TWR (%)")
+    ax.set_title("Yearly TWR Comparison")
+    ax.set_xticks(index)
+
+    # Create year labels
+    year_labels = []
+    current_year = datetime.datetime.now().year
+    last_portfolio_date: datetime.date | None = None
+    if df_portfolio is not None and not df_portfolio.empty:
+        last_portfolio_date = df_portfolio["date"].max()
+
+    sorted_years = sorted(list(years))
+
+    for year_val_dt in sorted_years:
+        year_val = int(str(year_val_dt).split("-")[0])
+
+        is_ytd_for_portfolio = False
+        if (
+            last_portfolio_date
+            and year_val == current_year
+            and (
+                last_portfolio_date.month < 12
+                or (last_portfolio_date.month == 12 and last_portfolio_date.day < 31)
+            )
+        ):
+            is_ytd_for_portfolio = True
+
+        if is_ytd_for_portfolio:
+            year_labels.append(f"{year_val}\n(YTD)")
+        else:
+            year_labels.append(str(year_val))
+
+    ax.set_xticklabels(year_labels)
+    ax.axhline(0, color="grey", linewidth=0.8, linestyle="--")
+    ax.legend()
+
+    return ax
+
+
+def generate_roi_report(
+    ledger_file: str,
+    data_dir: str | Path,
+    conversion_args: list[str],
+    output_dir: str | Path,
+    benchmark_tickers: list[str],
+    investment_account: str = "assets:investments",
+    pnl_account: str = "income:financial",
+    begin_date: str | None = None,
+) -> None:
+    """Generate standalone ROI comparison report."""
+    logger.info("Generating ROI report...")
+
+    # Get ROI data
+    df_portfolio, benchmark_series = get_roi_data(
+        ledger_file=ledger_file,
+        data_dir=data_dir,
+        conversion_args=conversion_args,
+        benchmark_tickers=benchmark_tickers,
+        investment_account=investment_account,
+        pnl_account=pnl_account,
+        begin_date=begin_date,
+    )
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plot_yearly_twr_bars(ax, df_portfolio, benchmark_series, benchmark_tickers)
+
+    # Save
+    output_path = Path(output_dir) / "roi_report.png"
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    logger.info(f"ROI report saved to {output_path}")

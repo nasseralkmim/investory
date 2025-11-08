@@ -4,7 +4,7 @@ import pytest
 import datetime
 import pandas as pd
 import numpy as np
-from investory import reports
+from investory import reports, roi
 
 
 class TestHledgerStatsParser:
@@ -18,7 +18,7 @@ Txns span           : 2021-07-19 to 2025-04-16 (1367 days)
 Last txn            : 2025-04-15 (200 days ago)
 Txns                : 33 (0.0 per day)"""
 
-        first_trans_date_str = reports.parse_ledger_stats_date_range(stats_output)
+        first_trans_date_str = roi.parse_ledger_stats_date_range(stats_output)
 
         assert first_trans_date_str == "2021-07-19"
         # Verify it can be parsed as a date
@@ -33,7 +33,7 @@ Transactions span   : 2020-01-01 to 2024-12-31 (1826 days)
 Last transaction    : 2024-12-30 (2 days ago)
 Transactions        : 100 (0.1 per day)"""
 
-        first_trans_date_str = reports.parse_ledger_stats_date_range(stats_output)
+        first_trans_date_str = roi.parse_ledger_stats_date_range(stats_output)
 
         assert first_trans_date_str == "2020-01-01"
         parsed_date = datetime.datetime.strptime(first_trans_date_str, "%Y-%m-%d").date()
@@ -46,7 +46,7 @@ Included files      : 2
 Date range          : 2019-06-15 to 2023-11-20 (1619 days)
 Transactions        : 50"""
 
-        first_trans_date_str = reports.parse_ledger_stats_date_range(stats_output)
+        first_trans_date_str = roi.parse_ledger_stats_date_range(stats_output)
 
         assert first_trans_date_str == "2019-06-15"
         parsed_date = datetime.datetime.strptime(first_trans_date_str, "%Y-%m-%d").date()
@@ -58,7 +58,7 @@ Transactions        : 50"""
 Included files      : 1
 Txns                : 0"""
 
-        first_trans_date_str = reports.parse_ledger_stats_date_range(stats_output)
+        first_trans_date_str = roi.parse_ledger_stats_date_range(stats_output)
 
         assert first_trans_date_str is None
 
@@ -229,7 +229,7 @@ class TestTWRCalculation:
 +---++------------+------------++---------------+----------+-------------+--------++---------++------------+----------+
 """
         
-        df = reports.parse_hledger_roi_ascii(ascii_output, verbose=0)
+        df = roi.parse_hledger_roi_ascii(ascii_output)
         
         assert df is not None
         assert len(df) == 3  # Three monthly periods (excluding Total row)
