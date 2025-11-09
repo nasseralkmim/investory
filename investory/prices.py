@@ -343,6 +343,47 @@ def filter_currency_commodities(commodities: list[str]) -> list[str]:
     return investment_assets
 
 
+def get_crypto_commodities(ledger_file: str) -> set[str]:
+    """Detect which commodities are cryptocurrencies based on account paths.
+    
+    Returns set of commodity names that appear in 'assets:investments:crypto:*' accounts.
+    """
+    crypto_commodities = set()
+    
+    try:
+        # Get all transactions involving crypto accounts
+        output = subprocess.check_output(
+            ["hledger", "-f", ledger_file, "print", "assets:investments:crypto"],
+            text=True
+        )
+        
+        # Parse transaction lines looking for commodity amounts in crypto accounts
+        # Pattern: any amount with a commodity symbol (non-currency)
+        import re
+        
+        for line in output.splitlines():
+            line = line.strip()
+            # Look for lines with assets:investments:crypto followed by commodity amounts
+            if 'assets:investments:crypto' in line:
+                # Pattern: amount COMMODITY (optionally followed by @ price)
+                # Match uppercase commodity codes (not currency symbols)
+                pattern = r'[\d\.\-]+\s+([A-Z][A-Z0-9]+)(?:\s+[@]|$)'
+                matches = re.finditer(pattern, line)
+                for match in matches:
+                    commodity = match.group(1)
+                    # Filter out currency codes
+                    currency_codes = {"USD", "EUR", "GBP", "JPY", "BRL", "CAD", "AUD", "CHF"}
+                    if commodity not in currency_codes:
+                        crypto_commodities.add(commodity)
+                        
+        logger.debug(f"Detected crypto commodities: {crypto_commodities}")
+        
+    except subprocess.CalledProcessError as e:
+        logger.debug(f"Could not detect crypto commodities: {e}")
+    
+    return crypto_commodities
+
+
 def get_commodity_currencies(ledger_file: str) -> dict[str, str]:
     """Detect which currency each commodity is priced in from the ledger.
     
@@ -387,16 +428,27 @@ def get_commodity_currencies(ledger_file: str) -> dict[str, str]:
     return commodity_currencies
 
 
-def infer_yahoo_ticker(commodity: str, ledger_currency: str | None = None) -> str:
+def infer_yahoo_ticker(
+    commodity: str, 
+    ledger_currency: str | None = None,
+    is_crypto: bool = False
+) -> str:
     """Infer Yahoo Finance ticker from commodity name and ledger currency.
     
     Applies heuristics:
+    - If commodity is cryptocurrency, append -USD suffix
     - If commodity used with €, append .DE (German Xetra exchange)
     - If commodity used with £, append .L (London Stock Exchange)
     - If commodity used with CHF, append .SW (Swiss Exchange)
     - If commodity used with R$, append .SA (Brazilian B3 exchange)
     - Otherwise, use commodity as-is
     """
+    # Cryptocurrencies use -USD suffix on Yahoo Finance
+    if is_crypto:
+        inferred = f"{commodity}-USD"
+        logger.info(f"Inferred crypto ticker for {commodity}: {inferred}")
+        return inferred
+    
     if not ledger_currency:
         return commodity
     
@@ -567,11 +619,21 @@ def ensure_price_data(
 
     # Detect which currency each commodity is used with in the ledger
     commodity_currencies = get_commodity_currencies(ledger_file)
+    
+    # Detect cryptocurrency commodities
+    crypto_commodities = get_crypto_commodities(ledger_file)
 
     logger.info(f"Ensuring price data for {len(investment_assets)} assets")
+    if crypto_commodities:
+        logger.info(f"Detected {len(crypto_commodities)} crypto assets: {crypto_commodities}")
 
     price_files = []
+    failed_assets = []
+    
     for commodity in investment_assets:
+        # Check if this is a cryptocurrency
+        is_crypto = commodity in crypto_commodities
+        
         # Detect currency from ledger first
         ledger_currency = commodity_currencies.get(commodity)
         
@@ -579,7 +641,7 @@ def ensure_price_data(
         if commodity in ticker_map:
             yahoo_ticker = ticker_map[commodity]
         else:
-            yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency)
+            yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency, is_crypto=is_crypto)
         
         # Prefer explicit currency_map, then ledger detection, then auto-detect from Yahoo
         currency = currency_map.get(commodity) or ledger_currency
@@ -592,12 +654,17 @@ def ensure_price_data(
         )
 
         # Fetch latest prices
-        cache.fetch_and_cache()
-
-        if cache.cache_file.exists():
-            price_files.append(str(cache.cache_file))
-        else:
-            logger.warning(f"No price data cached for {commodity}")
+        try:
+            count = cache.fetch_and_cache()
+            
+            if cache.cache_file.exists():
+                price_files.append(str(cache.cache_file))
+            else:
+                logger.warning(f"No price data cached for {commodity}")
+                failed_assets.append(commodity)
+        except Exception as e:
+            logger.error(f"Failed to fetch prices for {commodity}: {e}")
+            failed_assets.append(commodity)
 
     # Automatically fetch exchange rates if target_currency is specified
     if target_currency:
@@ -605,6 +672,17 @@ def ensure_price_data(
             ledger_file, data_dir, target_currency, commodity_currencies
         )
         price_files.extend(exchange_rate_files)
+
+    # Report failed assets and suggest manual ticker mapping
+    if failed_assets:
+        logger.warning(
+            f"\nFailed to fetch prices for {len(failed_assets)} asset(s): {', '.join(failed_assets)}"
+        )
+        logger.warning(
+            "Consider providing manual ticker mappings using --ticker-map option:"
+        )
+        for asset in failed_assets:
+            logger.warning(f"  --ticker-map {asset}:<YAHOO_TICKER>")
 
     return price_files
 
