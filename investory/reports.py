@@ -394,9 +394,8 @@ def generate_asset_evolution_graph(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
     df_evo = df_evo[df_evo.columns].apply(pd.to_numeric)
-    # convert columns name to datetime
-    df_evo.columns = pd.to_datetime(df_evo.columns, format="%Y-%m")
-    df_evo = df_evo.transpose()
+    # convert index (dates) to datetime
+    df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
 
     account_to_color = get_account_colors(ledger)
 
