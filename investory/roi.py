@@ -304,6 +304,7 @@ def get_portfolio_roi(
     investment_account: str = "assets:investments",
     pnl_account: str = "income:financial",
     begin_date: str | None = None,
+    currency: str = "$",
 ) -> pd.DataFrame | None:
     """Calculate portfolio ROI using hledger."""
     logger.info("Calculating portfolio ROI...")
@@ -342,7 +343,7 @@ def get_portfolio_roi(
     roi_args = " ".join(base_roi_args)
 
     command = (
-        f"hledger -f {ledger_file} {price_args} {conv_args} {roi_args} --value=then,$"
+        f"hledger -f {ledger_file} {price_args} {conv_args} {roi_args} --value=then,{currency}"
     )
 
     try:
@@ -362,6 +363,7 @@ def get_roi_data(
     investment_account: str = "assets:investments",
     pnl_account: str = "income:financial",
     begin_date: str | None = None,
+    currency: str = "$",
 ) -> tuple[pd.DataFrame | None, list[pd.Series | None]]:
     """Fetch and calculate ROI data for portfolio and benchmarks.
 
@@ -373,7 +375,7 @@ def get_roi_data(
     )
 
     # Ensure price data is available
-    price_files = prices.ensure_price_data(ledger_file, data_dir)
+    price_files = prices.ensure_price_data(ledger_file, data_dir, target_currency=currency)
     logger.info(f"Using {len(price_files)} price data files")
 
     # Get portfolio ROI
@@ -384,6 +386,7 @@ def get_roi_data(
         investment_account=investment_account,
         pnl_account=pnl_account,
         begin_date=begin_date,
+        currency=currency,
     )
 
     # Determine years for benchmark calculation
