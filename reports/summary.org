@@ -1,0 +1,5 @@
+* Portfolio Overview Graph
+[[file:combined-overview.svg]]
+* Summary balance sheet last three years
+
+#+begin_export html

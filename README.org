@@ -71,8 +71,11 @@ This single command will:
 1. Detect all investment commodities in your ledger
 2. Automatically infer Yahoo Finance tickers based on ledger currency
 3. Fetch missing prices from Yahoo Finance
-4. Cache prices to the data directory
+4. Cache prices to the data directory (=--data-dir=, default: =./data=)
 5. Generate comprehensive reports including ROI analysis
+
+*Note:* You can specify any directory for cached price data using =--data-dir /path/to/cache=.
+All fetched Yahoo Finance prices will be stored as =.ledger= files in this directory for reuse.
 
 *** Smart ticker inference
 
