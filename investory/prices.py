@@ -28,12 +28,12 @@ class PriceCache:
         self,
         commodity: str,
         yahoo_ticker: str | None = None,
-        currency: str = "$",
+        currency: str | None = None,
         output_dir: str | Path = ".",
     ):
         self.commodity = commodity
         self.yahoo_ticker = yahoo_ticker or commodity
-        self.currency = currency
+        self.currency = currency  # None means auto-detect
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.cache_file = self.output_dir / f"{self.yahoo_ticker}.ledger"
@@ -108,6 +108,11 @@ class PriceCache:
         )
 
         try:
+            # Auto-detect currency if not specified
+            if self.currency is None:
+                self.currency = self._detect_currency()
+                logger.info(f"Auto-detected currency for {self.commodity}: {self.currency}")
+            
             history_df = self._fetch_yahoo_history(start_date, end_date)
             if history_df.empty:
                 logger.warning(f"No data fetched for {self.commodity}")
@@ -120,6 +125,39 @@ class PriceCache:
         except Exception as e:
             logger.error(f"Error fetching prices for {self.commodity}: {e}")
             return 0
+
+    def _detect_currency(self) -> str:
+        """Auto-detect currency from Yahoo Finance ticker info."""
+        try:
+            ticker = yq.Ticker(self.yahoo_ticker)
+            info = ticker.summary_detail
+            
+            if isinstance(info, dict) and self.yahoo_ticker in info:
+                ticker_info = info[self.yahoo_ticker]
+                if isinstance(ticker_info, dict) and 'currency' in ticker_info:
+                    currency_code = ticker_info['currency']
+                    
+                    # Map common currency codes to symbols
+                    currency_symbols = {
+                        'EUR': '€',
+                        'USD': '$',
+                        'GBP': '£',
+                        'JPY': '¥',
+                        'BRL': 'R$',
+                        'CHF': 'CHF',
+                        'CAD': 'C$',
+                        'AUD': 'A$',
+                    }
+                    
+                    detected = currency_symbols.get(currency_code, currency_code)
+                    logger.debug(f"Detected currency for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    return detected
+        except Exception as e:
+            logger.debug(f"Could not auto-detect currency for {self.yahoo_ticker}: {e}")
+        
+        # Default to USD if detection fails
+        logger.debug(f"Defaulting to $ for {self.yahoo_ticker}")
+        return "$"
 
     def _fetch_yahoo_history(
         self, start_date: datetime.date, end_date: datetime.date
@@ -239,11 +277,196 @@ def filter_currency_commodities(commodities: list[str]) -> list[str]:
     return investment_assets
 
 
+def get_commodity_currencies(ledger_file: str) -> dict[str, str]:
+    """Detect which currency each commodity is priced in from the ledger.
+    
+    Returns dict mapping commodity -> currency symbol (e.g., {'VWCE': '€'})
+    """
+    commodity_currencies = {}
+    
+    try:
+        # Get all transactions involving commodities
+        output = subprocess.check_output(
+            ["hledger", "-f", ledger_file, "print"],
+            text=True
+        )
+        
+        # Parse transaction lines looking for patterns like:
+        # assets:investments  10 VWCE @ €90
+        # assets:investments  10 VWCE @@ €900
+        import re
+        
+        # Pattern: amount COMMODITY @ or @@ CURRENCY
+        pattern = r'[\d\.\-]+\s+([A-Z][A-Z0-9]*)\s+@@?\s*([€$£¥]|\w+)'
+        
+        for line in output.splitlines():
+            line = line.strip()
+            matches = re.finditer(pattern, line)
+            for match in matches:
+                commodity = match.group(1)
+                currency = match.group(2)
+                
+                # Only track if commodity is not itself a currency
+                currency_symbols = {"$", "€", "£", "¥", "R$", "USD", "EUR", "GBP", "JPY", "BRL"}
+                if commodity not in currency_symbols:
+                    commodity_currencies[commodity] = currency
+                    
+        logger.debug(f"Detected commodity currencies: {commodity_currencies}")
+        
+    except subprocess.CalledProcessError as e:
+        logger.debug(f"Could not detect commodity currencies: {e}")
+    
+    return commodity_currencies
+
+
+def infer_yahoo_ticker(commodity: str, ledger_currency: str | None = None) -> str:
+    """Infer Yahoo Finance ticker from commodity name and ledger currency.
+    
+    Applies heuristics:
+    - If commodity used with €, append .DE (German Xetra exchange)
+    - If commodity used with £, append .L (London Stock Exchange)
+    - If commodity used with CHF, append .SW (Swiss Exchange)
+    - Otherwise, use commodity as-is
+    """
+    if not ledger_currency:
+        return commodity
+    
+    # Map currencies to exchange suffixes
+    exchange_suffixes = {
+        '€': '.DE',      # Euro -> German Xetra
+        'EUR': '.DE',
+        '£': '.L',       # British Pound -> London
+        'GBP': '.L',
+        'CHF': '.SW',    # Swiss Franc -> Switzerland
+    }
+    
+    suffix = exchange_suffixes.get(ledger_currency)
+    if suffix and not any(commodity.endswith(s) for s in ['.DE', '.L', '.SW', '.AS', '.PA']):
+        inferred = f"{commodity}{suffix}"
+        logger.info(f"Inferred ticker for {commodity} with {ledger_currency}: {inferred}")
+        return inferred
+    
+    return commodity
+
+
+def get_exchange_rate_ticker(from_currency: str, to_currency: str) -> str | None:
+    """Get Yahoo Finance ticker for currency exchange rate.
+    
+    Args:
+        from_currency: Source currency symbol (e.g., '$', '€', 'USD')
+        to_currency: Target currency symbol (e.g., '€', '$', 'EUR')
+        
+    Returns:
+        Yahoo Finance ticker like 'USDEUR=X' or None if not found
+    """
+    # Normalize currency symbols to codes
+    currency_to_code = {
+        '$': 'USD', 'USD': 'USD',
+        '€': 'EUR', 'EUR': 'EUR',
+        '£': 'GBP', 'GBP': 'GBP',
+        '¥': 'JPY', 'JPY': 'JPY',
+        'R$': 'BRL', 'BRL': 'BRL',
+        'CHF': 'CHF',
+        'C$': 'CAD', 'CAD': 'CAD',
+        'A$': 'AUD', 'AUD': 'AUD',
+    }
+    
+    from_code = currency_to_code.get(from_currency)
+    to_code = currency_to_code.get(to_currency)
+    
+    if not from_code or not to_code or from_code == to_code:
+        return None
+    
+    # Yahoo Finance exchange rate format: FROMTO=X
+    ticker = f"{from_code}{to_code}=X"
+    return ticker
+
+
+def ensure_exchange_rates(
+    ledger_file: str,
+    data_dir: str | Path,
+    target_currency: str,
+    commodity_currencies: dict[str, str] | None = None,
+) -> list[str]:
+    """Automatically fetch exchange rates for currencies used in the ledger.
+    
+    Args:
+        ledger_file: Path to the ledger file
+        data_dir: Directory for cached price data
+        target_currency: The target currency to convert to (e.g., '€', 'USD')
+        commodity_currencies: Pre-computed mapping of commodity -> currency (optional)
+        
+    Returns:
+        List of exchange rate file paths
+    """
+    data_dir = Path(data_dir)
+    
+    # Detect currencies if not provided
+    if commodity_currencies is None:
+        commodity_currencies = get_commodity_currencies(ledger_file)
+    
+    # Get all unique currencies used in ledger
+    all_currencies = get_ledger_commodities(ledger_file)
+    used_currencies = set(commodity_currencies.values()) | set(all_currencies)
+    
+    # Filter to actual currency symbols
+    currency_symbols = {'$', '€', '£', '¥', 'R$', 'USD', 'EUR', 'GBP', 'JPY', 'BRL', 'CAD', 'AUD', 'CHF'}
+    used_currencies = used_currencies & currency_symbols
+    
+    # Remove target currency
+    used_currencies.discard(target_currency)
+    
+    # Normalize target currency to handle both symbols and codes
+    currency_to_code = {
+        '$': 'USD', '€': 'EUR', '£': 'GBP', '¥': 'JPY', 'R$': 'BRL',
+        'USD': 'USD', 'EUR': 'EUR', 'GBP': 'GBP', 'JPY': 'JPY', 'BRL': 'BRL',
+        'CHF': 'CHF', 'CAD': 'CAD', 'AUD': 'AUD',
+    }
+    target_symbol = target_currency
+    for sym, code in currency_to_code.items():
+        if target_currency == code and sym in ['$', '€', '£', '¥', 'R$']:
+            target_symbol = sym
+            break
+    
+    if not used_currencies:
+        logger.debug("No exchange rates needed - single currency ledger")
+        return []
+    
+    logger.info(f"Fetching exchange rates to {target_currency} for: {used_currencies}")
+    
+    exchange_rate_files = []
+    for currency in used_currencies:
+        ticker = get_exchange_rate_ticker(currency, target_currency)
+        if not ticker:
+            logger.debug(f"No exchange rate ticker for {currency} -> {target_currency}")
+            continue
+        
+        logger.info(f"Fetching exchange rate: {currency} -> {target_currency} ({ticker})")
+        
+        cache = PriceCache(
+            commodity=currency,
+            yahoo_ticker=ticker,
+            currency=target_symbol,
+            output_dir=data_dir,
+        )
+        
+        try:
+            cache.fetch_and_cache()
+            if cache.cache_file.exists():
+                exchange_rate_files.append(str(cache.cache_file))
+                logger.info(f"Cached exchange rate to {cache.cache_file.name}")
+        except Exception as e:
+            logger.warning(f"Could not fetch exchange rate {ticker}: {e}")
+    
+    return exchange_rate_files
+
+
 def ensure_price_data(
     ledger_file: str,
     data_dir: str | Path,
     ticker_map: dict[str, str] | None = None,
     currency_map: dict[str, str] | None = None,
+    target_currency: str | None = None,
 ) -> list[str]:
     """Ensure all investment assets have price data cached.
 
@@ -251,7 +474,8 @@ def ensure_price_data(
         ledger_file: Path to the main ledger file
         data_dir: Directory for cached price data
         ticker_map: Optional mapping of commodity -> Yahoo ticker
-        currency_map: Optional mapping of commodity -> currency symbol
+        currency_map: Optional mapping of commodity -> currency symbol (auto-detected if not provided)
+        target_currency: If provided, automatically fetch exchange rates to this currency
 
     Returns:
         List of price cache file paths to include in hledger commands
@@ -270,12 +494,21 @@ def ensure_price_data(
         logger.warning(f"No investment assets found in {ledger_file}")
         return []
 
+    # Detect which currency each commodity is used with in the ledger
+    commodity_currencies = get_commodity_currencies(ledger_file)
+
     logger.info(f"Ensuring price data for {len(investment_assets)} assets")
 
     price_files = []
     for commodity in investment_assets:
-        yahoo_ticker = ticker_map.get(commodity, commodity)
-        currency = currency_map.get(commodity, "$")
+        # Use explicit ticker map if provided, otherwise infer from ledger currency
+        if commodity in ticker_map:
+            yahoo_ticker = ticker_map[commodity]
+        else:
+            ledger_currency = commodity_currencies.get(commodity)
+            yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency)
+        
+        currency = currency_map.get(commodity)  # None means auto-detect
 
         cache = PriceCache(
             commodity=commodity,
@@ -291,6 +524,13 @@ def ensure_price_data(
             price_files.append(str(cache.cache_file))
         else:
             logger.warning(f"No price data cached for {commodity}")
+
+    # Automatically fetch exchange rates if target_currency is specified
+    if target_currency:
+        exchange_rate_files = ensure_exchange_rates(
+            ledger_file, data_dir, target_currency, commodity_currencies
+        )
+        price_files.extend(exchange_rate_files)
 
     return price_files
 
