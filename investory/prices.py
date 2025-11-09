@@ -130,47 +130,86 @@ class PriceCache:
         """Auto-detect currency from Yahoo Finance ticker info.
         
         Tries multiple Yahoo Finance API endpoints to find the currency.
+        If the ticker is not found, tries common exchange suffixes.
         Falls back to USD if detection fails.
         """
+        currency = self._try_detect_currency(self.yahoo_ticker)
+        if currency:
+            return currency
+        
+        # If ticker not found and no exchange suffix, try common exchanges
+        if not any(self.yahoo_ticker.endswith(suffix) for suffix in ['.SA', '.DE', '.L', '.SW', '.AS', '.PA']):
+            logger.debug(f"Ticker {self.yahoo_ticker} not found, trying with exchange suffixes")
+            # Try common exchanges based on ticker pattern
+            exchanges_to_try = ['.SA', '.DE', '.L', '.SW']  # Brazilian, German, London, Swiss
+            
+            for suffix in exchanges_to_try:
+                test_ticker = f"{self.yahoo_ticker}{suffix}"
+                logger.debug(f"Trying {test_ticker}")
+                currency = self._try_detect_currency(test_ticker)
+                if currency:
+                    logger.info(f"Found {self.yahoo_ticker} as {test_ticker} with currency {currency}")
+                    # Update the yahoo_ticker to use the working one
+                    self.yahoo_ticker = test_ticker
+                    # Update cache file path to match the corrected ticker
+                    self.cache_file = self.output_dir / f"{self.yahoo_ticker}.ledger"
+                    return currency
+        
+        # Default to USD if detection fails
+        logger.warning(f"Could not detect currency for {self.yahoo_ticker}, defaulting to $")
+        return "$"
+    
+    def _try_detect_currency(self, ticker_symbol: str) -> str | None:
+        """Try to detect currency for a specific ticker symbol.
+        
+        Returns None if ticker not found or has errors.
+        """
         try:
-            ticker = yq.Ticker(self.yahoo_ticker)
+            ticker = yq.Ticker(ticker_symbol)
             
             # Try 1: summary_detail
             info = ticker.summary_detail
-            if isinstance(info, dict) and self.yahoo_ticker in info:
-                ticker_info = info[self.yahoo_ticker]
+            if isinstance(info, dict) and ticker_symbol in info:
+                ticker_info = info[ticker_symbol]
+                # Check for error messages
+                if isinstance(ticker_info, str) and 'not found' in ticker_info.lower():
+                    return None
                 if isinstance(ticker_info, dict) and 'currency' in ticker_info:
                     currency_code = ticker_info['currency']
                     detected = self._currency_code_to_symbol(currency_code)
-                    logger.debug(f"Detected currency from summary_detail for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    logger.debug(f"Detected currency from summary_detail for {ticker_symbol}: {currency_code} → {detected}")
                     return detected
             
             # Try 2: price info
             price_info = ticker.price
-            if isinstance(price_info, dict) and self.yahoo_ticker in price_info:
-                ticker_info = price_info[self.yahoo_ticker]
+            if isinstance(price_info, dict) and ticker_symbol in price_info:
+                ticker_info = price_info[ticker_symbol]
+                # Check for error messages
+                if isinstance(ticker_info, str) and 'not found' in ticker_info.lower():
+                    return None
                 if isinstance(ticker_info, dict) and 'currency' in ticker_info:
                     currency_code = ticker_info['currency']
                     detected = self._currency_code_to_symbol(currency_code)
-                    logger.debug(f"Detected currency from price info for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    logger.debug(f"Detected currency from price info for {ticker_symbol}: {currency_code} → {detected}")
                     return detected
             
             # Try 3: financial_data
             financial_data = ticker.financial_data
-            if isinstance(financial_data, dict) and self.yahoo_ticker in financial_data:
-                ticker_info = financial_data[self.yahoo_ticker]
+            if isinstance(financial_data, dict) and ticker_symbol in financial_data:
+                ticker_info = financial_data[ticker_symbol]
+                # Check for error messages
+                if isinstance(ticker_info, str) and 'not found' in ticker_info.lower():
+                    return None
                 if isinstance(ticker_info, dict) and 'financialCurrency' in ticker_info:
                     currency_code = ticker_info['financialCurrency']
                     detected = self._currency_code_to_symbol(currency_code)
-                    logger.debug(f"Detected currency from financial_data for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    logger.debug(f"Detected currency from financial_data for {ticker_symbol}: {currency_code} → {detected}")
                     return detected
                     
         except Exception as e:
-            logger.debug(f"Could not auto-detect currency for {self.yahoo_ticker}: {e}")
+            logger.debug(f"Error detecting currency for {ticker_symbol}: {e}")
         
-        # Default to USD if detection fails
-        logger.debug(f"Defaulting to $ for {self.yahoo_ticker}")
-        return "$"
+        return None
     
     def _currency_code_to_symbol(self, currency_code: str) -> str:
         """Convert currency code (e.g., 'BRL') to symbol (e.g., 'R$')."""
