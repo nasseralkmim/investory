@@ -14,7 +14,7 @@ import matplotlib.axes
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from . import roi
+from . import prices, roi
 
 logger = logging.getLogger(__name__)
 
@@ -596,30 +596,6 @@ def generate_summary_report(
         print("Completed summary report")
 
 
-    """Extract the years covered by transactions in the ledger."""
-    try:
-        stats_output: str = run_command(
-            f"hledger -f {ledger_file} stats", verbose=verbose
-        )
-    except subprocess.CalledProcessError:
-        if verbose >= 1:
-            print(
-                f"Warning: Could not run 'hledger stats' on {ledger_file}. Cannot determine years.",
-                file=sys.stderr,
-            )
-        return []  # Return empty list if stats fails
-
-    for line in stats_output.split("\n"):
-        # Handle different hledger versions/outputs for date span
-        if line.startswith("Transactions span") or line.startswith("Date range"):
-            span = line.split(":")[1].strip()
-            start_year, end_year = map(
-                lambda x: int(x.split("-")[0]), span.split(" to ")
-            )
-            return list(range(start_year, end_year + 1))
-    return []  # Return an empty list if no span is found
-
-
 def generate_combined_figure(
     ledger_file: str,
     data_dir: str,
@@ -632,11 +608,30 @@ def generate_combined_figure(
     roi_begin_date: str | None = None,
     verbose: int = 0,
     enable_roi_plots: bool = True,
+    ticker_map: dict[str, str] | None = None,
+    currency_map: dict[str, str] | None = None,
 ):
     """Generate a combined figure with Asset Distribution, Evolution, and ROI."""
     logger.info("Generating combined overview figure...")
     if not enable_roi_plots:
         logger.info("ROI plot generation is disabled.")
+    
+    # --- Ensure Price Data is Available ---
+    # Fetch and cache price data for all commodities in the ledger
+    # This needs to happen before generating any graphs that require prices
+    logger.info("Ensuring price data is available...")
+    try:
+        price_files = prices.ensure_price_data(
+            ledger_file, 
+            data_dir, 
+            ticker_map=ticker_map, 
+            currency_map=currency_map,
+            target_currency=target_currency
+        )
+        if verbose >= 1 and price_files:
+            logger.info(f"Price data cached in: {', '.join(price_files)}")
+    except Exception as e:
+        logger.warning(f"Could not ensure price data: {e}")
 
     # --- Create Figure and Subplots ---
     # Use constrained_layout for better automatic spacing
@@ -699,6 +694,7 @@ def generate_combined_figure(
                 investment_account=roi_investment_account,
                 pnl_account=roi_pnl_account,
                 begin_date=roi_begin_date,
+                currency=target_currency,
             )
         except Exception as e:
             logger.error(f"Error getting ROI data: {e}")
@@ -820,6 +816,22 @@ if __name__ == "__main__":
         help="Enable or disable ROI report generation (default: enabled). Use --roi-report or --no-roi-report.",
     )
     _ = parser.add_argument(
+        "--ticker-map",
+        help="Map commodity names to Yahoo Finance tickers (format: COMMODITY:TICKER, e.g., VWCE:VWCE.DE). Can be specified multiple times.",
+        required=False,
+        type=str,
+        nargs="*",
+        default=[],
+    )
+    _ = parser.add_argument(
+        "--currency-map",
+        help="Map commodity names to currency symbols (format: COMMODITY:SYMBOL, e.g., VWCE:€). Optional: currencies are auto-detected from Yahoo Finance if not specified.",
+        required=False,
+        type=str,
+        nargs="*",
+        default=[],
+    )
+    _ = parser.add_argument(
         "-v",
         "--verbose",
         help="Set output verbosity level (0=silent, 1=normal, 2=detailed).",
@@ -839,9 +851,26 @@ if __name__ == "__main__":
             level=logging.DEBUG,
             format="%(levelname)s [%(name)s]: %(message)s"
         )
+    
+    # Suppress verbose logging from matplotlib and PIL
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
 
     # Ensure output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
+
+    # Parse ticker and currency mappings
+    ticker_map = {}
+    for mapping in args.ticker_map:
+        if ':' in mapping:
+            commodity, ticker = mapping.split(':', 1)
+            ticker_map[commodity] = ticker
+    
+    currency_map = {}
+    for mapping in args.currency_map:
+        if ':' in mapping:
+            commodity, currency = mapping.split(':', 1)
+            currency_map[commodity] = currency
 
     # Detect all currencies in the main ledger
     all_currencies = get_ledger_currencies(args.ledger, verbose=args.verbose)
@@ -918,6 +947,8 @@ if __name__ == "__main__":
         roi_begin_date=args.roi_begin_date,
         verbose=args.verbose,
         enable_roi_plots=args.roi_report,
+        ticker_map=ticker_map,
+        currency_map=currency_map,
     )
 
     logger.info("All report generation finished.")
