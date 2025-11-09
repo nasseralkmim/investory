@@ -69,9 +69,74 @@ python -m investory.reports --ledger all.ledger --data-dir data --currency € -
 
 This single command will:
 1. Detect all investment commodities in your ledger
-2. Automatically fetch missing prices from Yahoo Finance
-3. Cache prices to the data directory
-4. Generate comprehensive reports including ROI analysis
+2. Automatically infer Yahoo Finance tickers based on ledger currency
+3. Fetch missing prices from Yahoo Finance
+4. Cache prices to the data directory
+5. Generate comprehensive reports including ROI analysis
+
+*** Smart ticker inference
+
+The system automatically infers the correct Yahoo Finance ticker based on the currency used in your ledger:
+
+- Assets priced in € → adds .DE suffix (German Xetra exchange)
+  - VWCE @ €90 → fetches from VWCE.DE
+  - BMW @ €85 → fetches from BMW.DE
+
+- Assets priced in £ → adds .L suffix (London Stock Exchange)
+  - LLOY @ £0.50 → fetches from LLOY.L
+
+- Assets priced in CHF → adds .SW suffix (Swiss Exchange)
+  - NESN @ CHF95 → fetches from NESN.SW
+
+- Assets priced in $ → no suffix (defaults to US exchanges)
+  - AAPL @ $150 → fetches from AAPL
+
+*** Custom ticker mappings
+
+Only needed if the automatic inference is wrong or for non-standard tickers:
+
+#+begin_src sh
+# Override automatic inference
+python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 1 \
+  --ticker-map VWCE:VWCE.AS  # Use Amsterdam exchange instead of automatic .DE
+#+end_src
+
+Multiple overrides:
+
+#+begin_src sh
+python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 1 \
+  --ticker-map VWCE:VWCE.AS SOME_FUND:^GSPC
+#+end_src
+
+The currency symbol for each asset is automatically detected from Yahoo Finance.
+You can override it if needed:
+
+#+begin_src sh
+python -m investory.reports --ledger all.ledger --data-dir data --currency € -v 1 \
+  --ticker-map VWCE:VWCE.AS \
+  --currency-map VWCE:€  # Optional: override auto-detection
+#+end_src
+
+*** Currency conversion data
+
+Exchange rates are now **automatically fetched** when you specify a target currency:
+
+#+begin_src sh
+# Automatically fetches all needed exchange rates to €
+python -m investory.reports --ledger all.ledger --currency € -v 2
+#+end_src
+
+If your ledger contains assets priced in $ and €, this will automatically:
+1. Fetch VWCE prices in € (if VWCE @ €90 in ledger)
+2. Fetch AAPL prices in $ (if AAPL @ $150 in ledger)
+3. Fetch USD→EUR exchange rate (USDEUR=X) automatically!
+
+**Manual fetching** (only needed for special cases):
+
+#+begin_src sh
+# Custom exchange rate or cryptocurrency
+python -m investory.prices --commodity BTC --yahoo-ticker BTC-USD --currency $ --output-dir data
+#+end_src
 
 ** Prices module
 
@@ -341,55 +406,40 @@ This automatically:
 *** Toy example for ROI
 **** Initial investment
 
-Let's say we bought some shares at this day:
+Buy AAPL stock on 2023-01-03 at $125.07:
 
 #+begin_src python :python /home/nasser/.venvs/general/bin/python
-import ybankinplay as yq
+import yahooquery as yq
 import datetime
-appl = yq.Ticker('aapl')
-print(appl.history(start=datetime.date(2023,1,1), end=datetime.date(2023,1,4)).close)
+aapl = yq.Ticker('aapl')
+history = aapl.history(start=datetime.date(2023,1,1), end=datetime.date(2023,1,4))
+print(f"AAPL close on 2023-01-03: ${history['close'].iloc[0]:.2f}")
 #+end_src
 
 #+RESULTS:
-: symbol  date      
-: aapl    2023-01-03    125.07
-: Name: close, dtype: float64
+: AAPL close on 2023-01-03: $125.07
 
-We can register in the ledger:
+Record in ledger:
 
-#+begin_src ledger :tangle examples/reports/all.ledger
-2023-01-03 * Buy appl
-    assets:investments:stocks  1 aapl @ $125.07
+#+begin_src ledger :tangle examples/reports-1/all.ledger
+2023-01-03 * Buy AAPL
+    assets:investments:stocks  1 AAPL @ $125.07
     assets:cash
 #+end_src
 
-**** Market fluctuation
+**** Generate ROI report automatically
 
-#+begin_src python 
-import yahooquery as yq
-import datetime
-appl = yq.Ticker('aapl')
-print(appl.history(start=datetime.date(2023,1,31), end=datetime.date(2023,2,1), adj_ohlc=True).close)
-#+end_src
+One command fetches prices and generates reports:
 
-#+RESULTS:
-: symbol  date      
-: aapl    2023-01-31    142.631622
-: Name: close, dtype: float64
-
-Price data is now managed automatically by the reports module.
-The old manual method using =investory.values= is shown below for reference,
-but is no longer necessary:
-
-#+begin_src sh :dir examples/reports-1/data
-# Legacy method (not required anymore)
-# python -m investory.values --commodity aapl --begin 2023-01-01
-# head aapl.ledger
-
-# New method (automatic)
-# Just run reports - prices are fetched automatically
+#+begin_src sh :dir examples/reports-1 :results silent
 python -m investory.reports --ledger all.ledger --data-dir data --currency $ -v 1
 #+end_src
+
+This automatically:
+- Detects AAPL in ledger
+- Fetches prices from Yahoo Finance
+- Caches to =data/AAPL.ledger=
+- Generates reports with ROI analysis
 
 **** Portfolio return
 
@@ -407,27 +457,24 @@ hledger -f all.ledger -f data/aapl.ledger roi --investment investments --profit-
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
 |       ||      Begin |        End || Value (begin) | Cashflow | Value (end) |     PnL ||     IRR || TWR/period | TWR/year |
 +=======++============+============++===============+==========+=============+=========++=========++============+==========+
-|     1 || 2023-01-01 | 2023-01-31 ||             0 |  $125.07 |     $142.44 |  $17.37 || 414.09% ||     13.89% |  362.46% |
-|     2 || 2023-02-01 | 2023-02-28 ||       $142.44 |        0 |     $145.75 |   $3.30 ||  34.82% ||      2.32% |   34.85% |
-|     3 || 2023-03-01 | 2023-03-31 ||       $145.75 |        0 |     $163.04 |  $17.29 || 274.39% ||     11.86% |  274.20% |
-|     4 || 2023-04-01 | 2023-04-30 ||       $163.04 |        0 |     $167.77 |   $4.73 ||  41.58% ||      2.90% |   41.60% |
-|     5 || 2023-05-01 | 2023-05-31 ||       $167.77 |        0 |     $175.49 |   $7.73 ||  69.92% ||      4.61% |   70.00% |
-|     6 || 2023-06-01 | 2023-06-30 ||       $175.49 |        0 |     $192.05 |  $16.55 || 199.44% ||      9.43% |  199.34% |
-|     7 || 2023-07-01 | 2023-07-31 ||       $192.05 |        0 |     $194.50 |   $2.46 ||  16.14% ||      1.28% |   16.15% |
-|     8 || 2023-08-01 | 2023-08-31 ||       $194.50 |        0 |     $186.26 |  $-8.24 || -39.95% ||     -4.24% |  -39.96% |
-|     9 || 2023-09-01 | 2023-09-30 ||       $186.26 |        0 |     $169.74 | $-16.52 || -67.69% ||     -8.87% |  -67.70% |
-|    10 || 2023-10-01 | 2023-10-31 ||       $169.74 |        0 |     $169.31 |  $-0.44 ||  -2.98% ||     -0.26% |   -3.02% |
-|    11 || 2023-11-01 | 2023-11-30 ||       $169.31 |        0 |     $188.57 |  $19.26 || 271.02% ||     11.38% |  271.10% |
-|    12 || 2023-12-01 | 2023-12-31 ||       $188.57 |        0 |     $191.13 |   $2.56 ||  17.22% ||      1.36% |   17.24% |
+|     1 || 2022-12-01 | 2022-12-31 ||             0 |  $128.27 |     $128.27 |       0 ||  -0.22% ||      0.00% |    0.00% |
+|     2 || 2023-01-01 | 2023-01-31 ||       $128.27 |        0 |     $142.44 |  $14.18 || 243.59% ||     11.05% |  243.59% |
+|     3 || 2023-02-01 | 2023-02-28 ||       $142.44 |        0 |     $145.75 |   $3.30 ||  34.82% ||      2.32% |   34.82% |
+|     4 || 2023-03-01 | 2023-03-31 ||       $145.75 |        0 |     $163.04 |  $17.29 || 274.39% ||     11.86% |  274.39% |
+|     5 || 2023-04-01 | 2023-04-30 ||       $163.04 |        0 |     $167.77 |   $4.73 ||  41.58% ||      2.90% |   41.58% |
+|     6 || 2023-05-01 | 2023-05-31 ||       $167.77 |        0 |     $175.49 |   $7.73 ||  69.92% ||      4.61% |   69.92% |
+|     7 || 2023-06-01 | 2023-06-30 ||       $175.49 |        0 |     $192.05 |  $16.55 || 199.44% ||      9.43% |  199.44% |
+|     8 || 2023-07-01 | 2023-07-31 ||       $192.05 |        0 |     $194.50 |   $2.46 ||  16.14% ||      1.28% |   16.14% |
+|     9 || 2023-08-01 | 2023-08-31 ||       $194.50 |        0 |     $186.26 |  $-8.24 || -39.95% ||     -4.24% |  -39.95% |
+|    10 || 2023-09-01 | 2023-09-30 ||       $186.26 |        0 |     $169.74 | $-16.52 || -67.69% ||     -8.87% |  -67.69% |
+|    11 || 2023-10-01 | 2023-10-31 ||       $169.74 |        0 |     $169.31 |  $-0.44 ||  -2.98% ||     -0.26% |   -2.98% |
+|    12 || 2023-11-01 | 2023-11-30 ||       $169.31 |        0 |     $188.57 |  $19.26 || 271.02% ||     11.38% |  271.02% |
+|    13 || 2023-12-01 | 2023-12-31 ||       $188.57 |        0 |     $191.13 |   $2.56 ||  17.22% ||      1.36% |   17.22% |
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
-| Total || 2023-01-01 | 2023-12-31 ||             0 |  $125.07 |     $191.13 |  $66.06 ||  53.18% ||     52.82% |   52.82% |
+| Total || 2022-12-01 | 2023-12-31 ||             0 |  $128.27 |     $191.13 |  $62.86 ||  48.68% ||     49.01% |   44.43% |
 +-------++------------+------------++---------------+----------+-------------+---------++---------++------------+----------+
 
 #+end_example
-
-We can see that in one month, the stock went from $125.07 to $142.44.
-An unrealized profit of $17.56.
-A 13.89% growth in one month (/ (- 142.44 125.07) 125.07).
 
 **** Index comparison
 
@@ -467,12 +514,6 @@ hledger -f index.ledger -f ^spx.ledger \
 #+end_src
 
 #+RESULTS:
-: +---++------------+------------++---------------+-----------+-------------+----------++--------++------------+----------+
-: |   ||      Begin |        End || Value (begin) |  Cashflow | Value (end) |      PnL ||    IRR || TWR/period | TWR/year |
-: +===++============+============++===============+===========+=============+==========++========++============+==========+
-: | 1 || 2023-01-01 | 2023-12-31 ||             0 | $ 3853.29 |   $ 4769.83 | $ 916.54 || 23.79% ||     23.79% |   23.79% |
-: +---++------------+------------++---------------+-----------+-------------+----------++--------++------------+----------+
-: 
 
 To get a nice plot of accumulated return in a year, we need to first export the monthly data.
 Unfortunately, hledger does not offer csv output.
@@ -675,13 +716,7 @@ Finally, generate comprehensive reports with benchmark comparisons.
 The reports module now automatically detects and fetches all necessary prices:
 
 #+begin_src sh :async yes :session reports :results silent
-# New simplified workflow - automatic price fetching
-python -m investory.reports \
-    --ledger all.ledger \
-    --data-dir data \
-    --currency € \
-    --benchmark-ticker ^spx ^bvsp ^ndx \
-    -v 1
+python -m investory.reports --ledger all.ledger --currency € -v 1 &> output.log
 #+end_src
 
 The module automatically:
