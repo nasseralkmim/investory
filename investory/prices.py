@@ -12,6 +12,7 @@ import logging
 import os
 import subprocess
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -100,7 +101,7 @@ class PriceCache:
             end_date = datetime.date.today()
 
         if start_date >= end_date:
-            logger.debug(f"No new data to fetch for {self.commodity}")
+            logger.info(f"{self.commodity}: Cache is up-to-date (last cached: {last_cached})")
             return 0
 
         logger.info(
@@ -558,11 +559,14 @@ def ensure_exchange_rates(
     logger.info(f"Fetching exchange rates to {target_currency} for: {used_currencies}")
     
     exchange_rate_files = []
-    for currency in used_currencies:
+    
+    # Helper function for parallel execution
+    def fetch_exchange_rate(currency: str) -> tuple[str, str | None]:
+        """Fetch exchange rate. Returns (currency, cache_file_path)."""
         ticker = get_exchange_rate_ticker(currency, target_currency)
         if not ticker:
             logger.debug(f"No exchange rate ticker for {currency} -> {target_currency}")
-            continue
+            return (currency, None)
         
         logger.info(f"Fetching exchange rate: {currency} -> {target_currency} ({ticker})")
         
@@ -576,10 +580,20 @@ def ensure_exchange_rates(
         try:
             cache.fetch_and_cache()
             if cache.cache_file.exists():
-                exchange_rate_files.append(str(cache.cache_file))
                 logger.info(f"Cached exchange rate to {cache.cache_file.name}")
+                return (currency, str(cache.cache_file))
         except Exception as e:
             logger.warning(f"Could not fetch exchange rate {ticker}: {e}")
+        
+        return (currency, None)
+    
+    # Fetch exchange rates in parallel
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(fetch_exchange_rate, currency) for currency in used_currencies]
+        for future in as_completed(futures):
+            currency, cache_file = future.result()
+            if cache_file:
+                exchange_rate_files.append(cache_file)
     
     return exchange_rate_files
 
@@ -590,6 +604,7 @@ def ensure_price_data(
     ticker_map: dict[str, str] | None = None,
     currency_map: dict[str, str] | None = None,
     target_currency: str | None = None,
+    max_workers: int = 10,
 ) -> list[str]:
     """Ensure all investment assets have price data cached.
 
@@ -599,6 +614,7 @@ def ensure_price_data(
         ticker_map: Optional mapping of commodity -> Yahoo ticker
         currency_map: Optional mapping of commodity -> currency symbol (auto-detected if not provided)
         target_currency: If provided, automatically fetch exchange rates to this currency
+        max_workers: Maximum parallel workers for fetching prices (default: 10)
 
     Returns:
         List of price cache file paths to include in hledger commands
@@ -630,41 +646,59 @@ def ensure_price_data(
     price_files = []
     failed_assets = []
     
-    for commodity in investment_assets:
-        # Check if this is a cryptocurrency
-        is_crypto = commodity in crypto_commodities
-        
-        # Detect currency from ledger first
-        ledger_currency = commodity_currencies.get(commodity)
-        
-        # Use explicit ticker map if provided, otherwise infer from ledger currency
-        if commodity in ticker_map:
-            yahoo_ticker = ticker_map[commodity]
-        else:
-            yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency, is_crypto=is_crypto)
-        
-        # Prefer explicit currency_map, then ledger detection, then auto-detect from Yahoo
-        currency = currency_map.get(commodity) or ledger_currency
-
-        cache = PriceCache(
-            commodity=commodity,
-            yahoo_ticker=yahoo_ticker,
-            currency=currency,
-            output_dir=data_dir,
-        )
-
-        # Fetch latest prices
+    # Helper function for parallel execution
+    def fetch_commodity_prices(commodity: str) -> tuple[str, str | None, str | None]:
+        """Fetch prices for a commodity. Returns (commodity, cache_file_path, error)."""
         try:
+            # Check if this is a cryptocurrency
+            is_crypto = commodity in crypto_commodities
+            
+            # Detect currency from ledger first
+            ledger_currency = commodity_currencies.get(commodity)
+            
+            # Use explicit ticker map if provided, otherwise infer from ledger currency
+            if commodity in ticker_map:
+                yahoo_ticker = ticker_map[commodity]
+            else:
+                yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency, is_crypto=is_crypto)
+            
+            # Prefer explicit currency_map, then ledger detection, then auto-detect from Yahoo
+            currency = currency_map.get(commodity) or ledger_currency
+
+            cache = PriceCache(
+                commodity=commodity,
+                yahoo_ticker=yahoo_ticker,
+                currency=currency,
+                output_dir=data_dir,
+            )
+
+            # Fetch latest prices
             count = cache.fetch_and_cache()
             
             if cache.cache_file.exists():
-                price_files.append(str(cache.cache_file))
+                return (commodity, str(cache.cache_file), None)
             else:
-                logger.warning(f"No price data cached for {commodity}")
-                failed_assets.append(commodity)
+                return (commodity, None, "No price data cached")
+                
         except Exception as e:
-            logger.error(f"Failed to fetch prices for {commodity}: {e}")
-            failed_assets.append(commodity)
+            return (commodity, None, str(e))
+    
+    # Fetch prices in parallel
+    logger.info(f"Fetching prices with {max_workers} parallel workers...")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_commodity = {
+            executor.submit(fetch_commodity_prices, commodity): commodity
+            for commodity in investment_assets
+        }
+        
+        for future in as_completed(future_to_commodity):
+            commodity, cache_file, error = future.result()
+            if cache_file:
+                price_files.append(cache_file)
+            else:
+                failed_assets.append(commodity)
+                if error:
+                    logger.error(f"Failed to fetch prices for {commodity}: {error}")
 
     # Automatically fetch exchange rates if target_currency is specified
     if target_currency:
