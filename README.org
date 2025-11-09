@@ -88,6 +88,10 @@ The system automatically infers the correct Yahoo Finance ticker based on the cu
 - Assets priced in CHF → adds .SW suffix (Swiss Exchange)
   - NESN @ CHF95 → fetches from NESN.SW
 
+- Assets priced in R$ → adds .SA suffix (Brazilian B3 exchange)
+  - ABEV3 @ R$10.50 → fetches from ABEV3.SA
+  - PETR4 @ R$30.00 → fetches from PETR4.SA
+
 - Assets priced in $ → no suffix (defaults to US exchanges)
   - AAPL @ $150 → fetches from AAPL
 

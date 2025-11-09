@@ -127,37 +127,64 @@ class PriceCache:
             return 0
 
     def _detect_currency(self) -> str:
-        """Auto-detect currency from Yahoo Finance ticker info."""
+        """Auto-detect currency from Yahoo Finance ticker info.
+        
+        Tries multiple Yahoo Finance API endpoints to find the currency.
+        Falls back to USD if detection fails.
+        """
         try:
             ticker = yq.Ticker(self.yahoo_ticker)
-            info = ticker.summary_detail
             
+            # Try 1: summary_detail
+            info = ticker.summary_detail
             if isinstance(info, dict) and self.yahoo_ticker in info:
                 ticker_info = info[self.yahoo_ticker]
                 if isinstance(ticker_info, dict) and 'currency' in ticker_info:
                     currency_code = ticker_info['currency']
-                    
-                    # Map common currency codes to symbols
-                    currency_symbols = {
-                        'EUR': '€',
-                        'USD': '$',
-                        'GBP': '£',
-                        'JPY': '¥',
-                        'BRL': 'R$',
-                        'CHF': 'CHF',
-                        'CAD': 'C$',
-                        'AUD': 'A$',
-                    }
-                    
-                    detected = currency_symbols.get(currency_code, currency_code)
-                    logger.debug(f"Detected currency for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    detected = self._currency_code_to_symbol(currency_code)
+                    logger.debug(f"Detected currency from summary_detail for {self.yahoo_ticker}: {currency_code} → {detected}")
                     return detected
+            
+            # Try 2: price info
+            price_info = ticker.price
+            if isinstance(price_info, dict) and self.yahoo_ticker in price_info:
+                ticker_info = price_info[self.yahoo_ticker]
+                if isinstance(ticker_info, dict) and 'currency' in ticker_info:
+                    currency_code = ticker_info['currency']
+                    detected = self._currency_code_to_symbol(currency_code)
+                    logger.debug(f"Detected currency from price info for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    return detected
+            
+            # Try 3: financial_data
+            financial_data = ticker.financial_data
+            if isinstance(financial_data, dict) and self.yahoo_ticker in financial_data:
+                ticker_info = financial_data[self.yahoo_ticker]
+                if isinstance(ticker_info, dict) and 'financialCurrency' in ticker_info:
+                    currency_code = ticker_info['financialCurrency']
+                    detected = self._currency_code_to_symbol(currency_code)
+                    logger.debug(f"Detected currency from financial_data for {self.yahoo_ticker}: {currency_code} → {detected}")
+                    return detected
+                    
         except Exception as e:
             logger.debug(f"Could not auto-detect currency for {self.yahoo_ticker}: {e}")
         
         # Default to USD if detection fails
         logger.debug(f"Defaulting to $ for {self.yahoo_ticker}")
         return "$"
+    
+    def _currency_code_to_symbol(self, currency_code: str) -> str:
+        """Convert currency code (e.g., 'BRL') to symbol (e.g., 'R$')."""
+        currency_symbols = {
+            'EUR': '€',
+            'USD': '$',
+            'GBP': '£',
+            'JPY': '¥',
+            'BRL': 'R$',
+            'CHF': 'CHF',
+            'CAD': 'C$',
+            'AUD': 'A$',
+        }
+        return currency_symbols.get(currency_code, currency_code)
 
     def _fetch_yahoo_history(
         self, start_date: datetime.date, end_date: datetime.date
@@ -506,14 +533,17 @@ def ensure_price_data(
 
     price_files = []
     for commodity in investment_assets:
+        # Detect currency from ledger first
+        ledger_currency = commodity_currencies.get(commodity)
+        
         # Use explicit ticker map if provided, otherwise infer from ledger currency
         if commodity in ticker_map:
             yahoo_ticker = ticker_map[commodity]
         else:
-            ledger_currency = commodity_currencies.get(commodity)
             yahoo_ticker = infer_yahoo_ticker(commodity, ledger_currency)
         
-        currency = currency_map.get(commodity)  # None means auto-detect
+        # Prefer explicit currency_map, then ledger detection, then auto-detect from Yahoo
+        currency = currency_map.get(commodity) or ledger_currency
 
         cache = PriceCache(
             commodity=commodity,
