@@ -636,6 +636,7 @@ def generate_combined_figure(
     # --- Ensure Price Data is Available ---
     # Fetch and cache price data for all commodities in the ledger
     # This needs to happen before generating any graphs that require prices
+    # Note: price_files will be reused by roi.get_roi_data() to avoid re-fetching
     logger.info("Ensuring price data is available...")
     try:
         price_files = prices.ensure_price_data(
@@ -712,6 +713,7 @@ def generate_combined_figure(
                 pnl_account=roi_pnl_account,
                 begin_date=roi_begin_date,
                 currency=target_currency,
+                price_files=price_files,  # Reuse already-fetched price files
             )
         except Exception as e:
             logger.error(f"Error getting ROI data: {e}")

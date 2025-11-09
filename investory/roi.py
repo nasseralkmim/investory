@@ -364,8 +364,20 @@ def get_roi_data(
     pnl_account: str = "income:financial",
     begin_date: str | None = None,
     currency: str = "$",
+    price_files: list[str] | None = None,  # Optional: reuse already-fetched price files
 ) -> tuple[pd.DataFrame | None, list[pd.Series | None]]:
     """Fetch and calculate ROI data for portfolio and benchmarks.
+    
+    Args:
+        ledger_file: Path to the main ledger file
+        data_dir: Directory for cached price data
+        conversion_args: hledger conversion arguments
+        benchmark_tickers: List of Yahoo Finance tickers for benchmarks
+        investment_account: Account pattern for investments
+        pnl_account: Account pattern for profit/loss
+        begin_date: Start date for ROI calculation
+        currency: Target currency
+        price_files: Optional list of price file paths (if already fetched, avoids re-fetching)
 
     Returns:
         Tuple of (portfolio_df, list of benchmark_series)
@@ -374,8 +386,9 @@ def get_roi_data(
         f"Fetching ROI data, comparing with benchmarks: {benchmark_tickers}"
     )
 
-    # Ensure price data is available
-    price_files = prices.ensure_price_data(ledger_file, data_dir, target_currency=currency)
+    # Ensure price data is available (skip if price_files already provided)
+    if price_files is None:
+        price_files = prices.ensure_price_data(ledger_file, data_dir, target_currency=currency)
     logger.info(f"Using {len(price_files)} price data files")
 
     # Get portfolio ROI
