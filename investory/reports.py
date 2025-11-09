@@ -249,11 +249,16 @@ def generate_asset_distribution_graph(
     # column 1: account names
     # column 2: account balances
     df: pd.DataFrame = pd.read_csv(csv_data)  # pyright ignore[reportUnknownMemberType]
+    
     # Update the currency symbol replacement
     df = df.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    df["balance"] = pd.to_numeric(df["balance"])
+    
+    # Also remove any other commodity symbols that might be present
+    df = df.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
+    
+    df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
 
     # Avoid problems with negative values
     negative_filter: pd.Series = df["balance"] < 0
@@ -369,6 +374,7 @@ def generate_asset_evolution_graph(
         "--infer-market-prices",
         "-O",
         "csv",
+        "--transpose",  # Transpose so dates are in rows (index) not columns
     ]
 
     plot_dir = "reports"
@@ -388,12 +394,24 @@ def generate_asset_evolution_graph(
     # columns id: account names
     # columns values: account balances
     df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+    
+    if verbose >= 2:
+        logger.info(f"Raw CSV data:\n{output[:500]}")  # Log first 500 chars
+    
     # Update the currency symbol replacement
     # The replace operation can return Series or None, causing type issues. Ignore for now.
     df_evo = df_evo.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric)
+    
+    # Also remove any other commodity symbols that might be present (e.g., "BTC", "ETH", etc.)
+    # This handles cases where conversion to target currency failed
+    df_evo = df_evo.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
+    
+    if verbose >= 2:
+        logger.info(f"After currency replacement:\n{df_evo.head()}")
+    
+    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors='coerce')
     # convert index (dates) to datetime
     df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
 
@@ -767,7 +785,7 @@ if __name__ == "__main__":
     )
     _ = parser.add_argument(
         "--data-dir",
-        help="Directory containing commodity price (.ledger) files",
+        help="Directory for cached commodity price (.ledger) files. Price data fetched from Yahoo Finance will be stored here.",
         required=False,
         type=str,
         default="./data",  # Default to ./data

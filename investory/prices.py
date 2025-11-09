@@ -741,7 +741,7 @@ if __name__ == "__main__":
         "--currency", default="$", help="Currency symbol (default: $)"
     )
     parser.add_argument(
-        "--output-dir", default=".", help="Directory for cached price files"
+        "--output-dir", default=".", help="Directory for cached price files (default: current directory)"
     )
     parser.add_argument(
         "--begin",
