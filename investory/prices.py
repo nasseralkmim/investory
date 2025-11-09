@@ -294,10 +294,12 @@ def get_commodity_currencies(ledger_file: str) -> dict[str, str]:
         # Parse transaction lines looking for patterns like:
         # assets:investments  10 VWCE @ €90
         # assets:investments  10 VWCE @@ €900
+        # assets:investments  10 ABEV3 @ R$10
         import re
         
         # Pattern: amount COMMODITY @ or @@ CURRENCY
-        pattern = r'[\d\.\-]+\s+([A-Z][A-Z0-9]*)\s+@@?\s*([€$£¥]|\w+)'
+        # Match R$ as two-char symbol or single currency symbols
+        pattern = r'[\d\.\-]+\s+([A-Z][A-Z0-9]*)\s+@@?\s*(R\$|[€$£¥]|\w+)'
         
         for line in output.splitlines():
             line = line.strip()
@@ -326,6 +328,7 @@ def infer_yahoo_ticker(commodity: str, ledger_currency: str | None = None) -> st
     - If commodity used with €, append .DE (German Xetra exchange)
     - If commodity used with £, append .L (London Stock Exchange)
     - If commodity used with CHF, append .SW (Swiss Exchange)
+    - If commodity used with R$, append .SA (Brazilian B3 exchange)
     - Otherwise, use commodity as-is
     """
     if not ledger_currency:
@@ -338,10 +341,12 @@ def infer_yahoo_ticker(commodity: str, ledger_currency: str | None = None) -> st
         '£': '.L',       # British Pound -> London
         'GBP': '.L',
         'CHF': '.SW',    # Swiss Franc -> Switzerland
+        'R$': '.SA',     # Brazilian Real -> B3 São Paulo
+        'BRL': '.SA',
     }
     
     suffix = exchange_suffixes.get(ledger_currency)
-    if suffix and not any(commodity.endswith(s) for s in ['.DE', '.L', '.SW', '.AS', '.PA']):
+    if suffix and not any(commodity.endswith(s) for s in ['.DE', '.L', '.SW', '.AS', '.PA', '.SA']):
         inferred = f"{commodity}{suffix}"
         logger.info(f"Inferred ticker for {commodity} with {ledger_currency}: {inferred}")
         return inferred
