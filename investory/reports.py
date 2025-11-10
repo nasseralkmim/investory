@@ -468,14 +468,35 @@ def generate_text_plots(
     """Generate text-based plots using plotext."""
     logger.info("Generating text-based plots...")
     
-    # Setup output file if output_dir is provided
-    output_file = None
+    # Setup output file path if output_dir is provided
+    output_file_path = None
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        output_file_path = os.path.join(output_dir, "summary.org")
-        output_file = open(output_file_path, "w")
-        original_stdout = sys.stdout
-        sys.stdout = output_file
+        output_file_path = os.path.join(output_dir, "plots.txt")
+        # Clear the file first
+        with open(output_file_path, "w") as f:
+            f.write("")
+    
+    def write_section(title: str, content: str = ""):
+        """Write a section header and optional content to file or stdout."""
+        section_text = f"\n{'='*80}\n{title}\n{'='*80}\n"
+        if content:
+            section_text += content + "\n"
+        
+        if output_file_path:
+            with open(output_file_path, "a") as f:
+                f.write(section_text)
+        else:
+            print(section_text, end="")
+    
+    def show_plot():
+        """Show or save the plotext figure."""
+        if output_file_path:
+            plt_text.build()  # Build the plot first
+            plt_text.save_fig(output_file_path, append=True, keep_colors=False)
+        else:
+            plt_text.show()
+        plt_text.clear_figure()
     
     # --- Ensure Price Data is Available ---
     logger.info("Ensuring price data is available...")
@@ -494,9 +515,7 @@ def generate_text_plots(
         price_files = []
     
     # --- Plot Asset Distribution ---
-    print("\n" + "="*80)
-    print("ASSET DISTRIBUTION")
-    print("="*80)
+    write_section("ASSET DISTRIBUTION")
     try:
         command: list[str] = [
             "hledger", "-f", ledger_file,
@@ -528,18 +547,15 @@ def generate_text_plots(
                 width=100,
                 title=f"Asset Distribution ({target_currency})"
             )
-            plt_text.show()
-            plt_text.clear_figure()
+            show_plot()
         else:
-            print("No data available for asset distribution")
+            write_section("", "No data available for asset distribution")
     except Exception as e:
         logger.error(f"Error generating text asset distribution: {e}")
-        print(f"Error: {e}")
+        write_section("", f"Error: {e}")
     
     # --- Plot Asset Evolution ---
-    print("\n" + "="*80)
-    print("ASSET EVOLUTION")
-    print("="*80)
+    write_section("ASSET EVOLUTION")
     try:
         data_files_args: list[str] = []
         if os.path.isdir(data_dir):
@@ -573,27 +589,32 @@ def generate_text_plots(
         df_evo = df_evo.where(df_evo >= 0)
         
         if not df_evo.empty:
+            # Clear any previous date formatting and start fresh
+            plt_text.clear_figure()
             plt_text.date_form('Y-m')
-            for col in df_evo.columns:
-                # Convert datetime index to strings for plotext
-                dates = [d.strftime('%Y-%m') for d in df_evo.index]
-                plt_text.plot(dates, df_evo[col].tolist(), label=col)
+            
+            # Calculate total portfolio value (sum across all accounts)
+            total_value = df_evo.sum(axis=1)
+            dates = [d.strftime('%Y-%m') for d in df_evo.index]
+            
+            # Plot total portfolio value as the main line
+            plt_text.plot(dates, total_value.tolist(), label="Total Portfolio")
+            
             plt_text.title(f"Asset Evolution ({target_currency})")
             plt_text.xlabel("Date")
             plt_text.ylabel(f"Value ({target_currency})")
-            plt_text.show()
-            plt_text.clear_figure()
+            show_plot()
         else:
-            print("No data available for asset evolution")
+            write_section("", "No data available for asset evolution")
     except Exception as e:
         logger.error(f"Error generating text asset evolution: {e}")
-        print(f"Error: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
+        write_section("", f"Error: {e}")
     
     # --- Plot ROI if enabled ---
     if enable_roi_plots:
-        print("\n" + "="*80)
-        print("YEARLY TWR COMPARISON")
-        print("="*80)
+        write_section("YEARLY TWR COMPARISON")
         try:
             df_portfolio, benchmark_series = roi.get_roi_data(
                 ledger_file=ledger_file,
@@ -611,58 +632,58 @@ def generate_text_plots(
                 # Ensure 'date' column exists and is datetime
                 if 'date' in df_portfolio.columns:
                     df_portfolio['date'] = pd.to_datetime(df_portfolio['date'])
-                    yearly_returns = df_portfolio.groupby(df_portfolio['date'].dt.year)['twr_factor'].apply(
-                        lambda x: x.prod() - 1
-                    )
+                    df_portfolio['year'] = df_portfolio['date'].dt.year
                 else:
                     # If date is the index
                     df_portfolio.index = pd.to_datetime(df_portfolio.index)
-                    yearly_returns = df_portfolio.groupby(df_portfolio.index.year)['twr_factor'].apply(
-                        lambda x: x.prod() - 1
-                    )
+                    df_portfolio['year'] = df_portfolio.index.year
                 
-                years = [str(y) for y in yearly_returns.index.tolist()]
+                # Calculate yearly returns for portfolio
+                yearly_returns = df_portfolio.groupby('year')['twr_factor'].apply(
+                    lambda x: x.prod() - 1
+                )
+                
+                years = yearly_returns.index.tolist()  # Keep as integers
                 returns_pct = (yearly_returns * 100).tolist()
                 
-                plt_text.simple_bar(
-                    years,
-                    returns_pct,
-                    width=100,
-                    title="Portfolio Yearly TWR (%)"
-                )
-                plt_text.show()
+                # Clear any previous date formatting
                 plt_text.clear_figure()
                 
-                # Show benchmark comparison if available
+                # Plot portfolio performance as a line
+                plt_text.plot(years, returns_pct, label="Portfolio")
+                
+                # Add benchmark comparison if available
                 if benchmark_series:
                     for i, bench_data in enumerate(benchmark_series):
                         if bench_data is not None and not bench_data.empty:
                             bench_name = benchmark_tickers[i] if i < len(benchmark_tickers) else f"Benchmark {i}"
+                            # Ensure benchmark has datetime index
+                            if not isinstance(bench_data.index, pd.DatetimeIndex):
+                                bench_data.index = pd.to_datetime(bench_data.index)
+                            
+                            # Calculate yearly returns for benchmark
                             bench_yearly = bench_data.groupby(bench_data.index.year).apply(
                                 lambda x: (1 + x).prod() - 1
                             )
-                            print(f"\nBenchmark ({bench_name}) Yearly Returns:")
-                            bench_years = [str(y) for y in bench_yearly.index.tolist()]
+                            bench_years = bench_yearly.index.tolist()  # Keep as integers
                             bench_returns_pct = (bench_yearly * 100).tolist()
                             
-                            plt_text.simple_bar(
-                                bench_years,
-                                bench_returns_pct,
-                                width=100,
-                                title=f"{bench_name} Yearly Returns (%)"
-                            )
-                            plt_text.show()
-                            plt_text.clear_figure()
+                            # Plot benchmark as a line
+                            plt_text.plot(bench_years, bench_returns_pct, label=bench_name)
+                
+                plt_text.title("Portfolio vs Benchmark Yearly TWR (%)")
+                plt_text.xlabel("Year")
+                plt_text.ylabel("Return (%)")
+                show_plot()
             else:
-                print("No ROI data available")
+                write_section("", "No ROI data available")
         except Exception as e:
             logger.error(f"Error generating text ROI plots: {e}")
-            print(f"Error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
+            write_section("", f"Error: {e}")
     
-    # Restore stdout and close file if needed
-    if output_file:
-        sys.stdout = original_stdout
-        output_file.close()
+    if output_file_path:
         logger.info(f"Text plots saved to {output_file_path}")
     
     logger.info("Finished text-based plot generation.")
