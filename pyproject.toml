@@ -4,7 +4,11 @@ name = "investory"
 dependencies = [
   "pandas",
   "matplotlib",
-  "yahooquery"]
+  "yahooquery",
+  "plotext"]
+
+[tool.setuptools]
+packages = ["investory"]
 
 [tool.pyright]
 venvPath = "/home/nasser/.venvs/"

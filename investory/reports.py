@@ -13,6 +13,7 @@ from concurrent.futures import Future, ProcessPoolExecutor, as_completed
 import matplotlib.axes
 import matplotlib.pyplot as plt
 import pandas as pd
+import plotext as plt_text
 
 from . import prices, roi
 
@@ -449,6 +450,224 @@ def generate_asset_evolution_graph(
     return ax  # Return the axes
 
 
+def generate_text_plots(
+    ledger_file: str,
+    data_dir: str,
+    target_currency: str,
+    conversion_args: list[str],
+    benchmark_tickers: list[str],
+    roi_investment_account: str = "investments",
+    roi_pnl_account: str = "unrealized",
+    roi_begin_date: str | None = None,
+    verbose: int = 0,
+    enable_roi_plots: bool = True,
+    ticker_map: dict[str, str] | None = None,
+    currency_map: dict[str, str] | None = None,
+    output_dir: str | None = None,
+):
+    """Generate text-based plots using plotext."""
+    logger.info("Generating text-based plots...")
+    
+    # Setup output file if output_dir is provided
+    output_file = None
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        output_file_path = os.path.join(output_dir, "summary.org")
+        output_file = open(output_file_path, "w")
+        original_stdout = sys.stdout
+        sys.stdout = output_file
+    
+    # --- Ensure Price Data is Available ---
+    logger.info("Ensuring price data is available...")
+    try:
+        price_files = prices.ensure_price_data(
+            ledger_file, 
+            data_dir, 
+            ticker_map=ticker_map, 
+            currency_map=currency_map,
+            target_currency=target_currency
+        )
+        if verbose >= 1 and price_files:
+            logger.info(f"Price data cached in: {', '.join(price_files)}")
+    except Exception as e:
+        logger.warning(f"Could not ensure price data: {e}")
+        price_files = []
+    
+    # --- Plot Asset Distribution ---
+    print("\n" + "="*80)
+    print("ASSET DISTRIBUTION")
+    print("="*80)
+    try:
+        command: list[str] = [
+            "hledger", "-f", ledger_file,
+            *conversion_args,
+            "bal", "acct:^assets:investments",
+            "--drop", "2", "--depth", "3",
+            f"--value=end,{target_currency}",
+            "--no-total", "--infer-market-prices",
+            "-O", "csv",
+        ]
+        
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output, _ = process.communicate()
+        csv_data = io.StringIO(output)
+        df: pd.DataFrame = pd.read_csv(csv_data)
+        
+        df = df.replace(re.escape(target_currency) + r"\s*", "", regex=True)
+        df = df.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
+        df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
+        
+        df_positive: pd.DataFrame = df[df["balance"] >= 0]
+        
+        if not df_positive.empty:
+            plt_text.simple_bar(
+                df_positive["account"].tolist(),
+                df_positive["balance"].tolist(),
+                width=100,
+                title=f"Asset Distribution ({target_currency})"
+            )
+            plt_text.show()
+            plt_text.clear_figure()
+        else:
+            print("No data available for asset distribution")
+    except Exception as e:
+        logger.error(f"Error generating text asset distribution: {e}")
+        print(f"Error: {e}")
+    
+    # --- Plot Asset Evolution ---
+    print("\n" + "="*80)
+    print("ASSET EVOLUTION")
+    print("="*80)
+    try:
+        data_files_args: list[str] = []
+        if os.path.isdir(data_dir):
+            for f in os.listdir(data_dir):
+                if f.endswith(".ledger"):
+                    data_files_args.extend(["-f", os.path.join(data_dir, f)])
+        
+        command: list[str] = [
+            "hledger", "-f", ledger_file,
+            *data_files_args,
+            *conversion_args,
+            "bal", "acct:^assets:investments",
+            "--historical", "--monthly",
+            "--drop", "2", "--depth", "3",
+            f"--value=end,{target_currency}",
+            "--no-total", "--infer-market-prices",
+            "-O", "csv", "--transpose",
+        ]
+        
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output, _ = process.communicate()
+        csv_data = io.StringIO(output)
+        df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+        
+        df_evo = df_evo.replace(re.escape(target_currency) + r"\s*", "", regex=True)
+        df_evo = df_evo.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
+        df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors='coerce')
+        df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
+        df_evo = df_evo.where(df_evo >= 0)
+        
+        if not df_evo.empty:
+            plt_text.date_form('Y-m')
+            for col in df_evo.columns:
+                # Convert datetime index to strings for plotext
+                dates = [d.strftime('%Y-%m') for d in df_evo.index]
+                plt_text.plot(dates, df_evo[col].tolist(), label=col)
+            plt_text.title(f"Asset Evolution ({target_currency})")
+            plt_text.xlabel("Date")
+            plt_text.ylabel(f"Value ({target_currency})")
+            plt_text.show()
+            plt_text.clear_figure()
+        else:
+            print("No data available for asset evolution")
+    except Exception as e:
+        logger.error(f"Error generating text asset evolution: {e}")
+        print(f"Error: {e}")
+    
+    # --- Plot ROI if enabled ---
+    if enable_roi_plots:
+        print("\n" + "="*80)
+        print("YEARLY TWR COMPARISON")
+        print("="*80)
+        try:
+            df_portfolio, benchmark_series = roi.get_roi_data(
+                ledger_file=ledger_file,
+                data_dir=data_dir,
+                conversion_args=conversion_args,
+                benchmark_tickers=benchmark_tickers,
+                investment_account=roi_investment_account,
+                pnl_account=roi_pnl_account,
+                begin_date=roi_begin_date,
+                currency=target_currency,
+                price_files=price_files,
+            )
+            
+            if df_portfolio is not None:
+                # Ensure 'date' column exists and is datetime
+                if 'date' in df_portfolio.columns:
+                    df_portfolio['date'] = pd.to_datetime(df_portfolio['date'])
+                    yearly_returns = df_portfolio.groupby(df_portfolio['date'].dt.year)['twr_factor'].apply(
+                        lambda x: x.prod() - 1
+                    )
+                else:
+                    # If date is the index
+                    df_portfolio.index = pd.to_datetime(df_portfolio.index)
+                    yearly_returns = df_portfolio.groupby(df_portfolio.index.year)['twr_factor'].apply(
+                        lambda x: x.prod() - 1
+                    )
+                
+                years = [str(y) for y in yearly_returns.index.tolist()]
+                returns_pct = (yearly_returns * 100).tolist()
+                
+                plt_text.simple_bar(
+                    years,
+                    returns_pct,
+                    width=100,
+                    title="Portfolio Yearly TWR (%)"
+                )
+                plt_text.show()
+                plt_text.clear_figure()
+                
+                # Show benchmark comparison if available
+                if benchmark_series:
+                    for i, bench_data in enumerate(benchmark_series):
+                        if bench_data is not None and not bench_data.empty:
+                            bench_name = benchmark_tickers[i] if i < len(benchmark_tickers) else f"Benchmark {i}"
+                            bench_yearly = bench_data.groupby(bench_data.index.year).apply(
+                                lambda x: (1 + x).prod() - 1
+                            )
+                            print(f"\nBenchmark ({bench_name}) Yearly Returns:")
+                            bench_years = [str(y) for y in bench_yearly.index.tolist()]
+                            bench_returns_pct = (bench_yearly * 100).tolist()
+                            
+                            plt_text.simple_bar(
+                                bench_years,
+                                bench_returns_pct,
+                                width=100,
+                                title=f"{bench_name} Yearly Returns (%)"
+                            )
+                            plt_text.show()
+                            plt_text.clear_figure()
+            else:
+                print("No ROI data available")
+        except Exception as e:
+            logger.error(f"Error generating text ROI plots: {e}")
+            print(f"Error: {e}")
+    
+    # Restore stdout and close file if needed
+    if output_file:
+        sys.stdout = original_stdout
+        output_file.close()
+        logger.info(f"Text plots saved to {output_file_path}")
+    
+    logger.info("Finished text-based plot generation.")
+
+
 def run_command(command: str, stdin_data: str | None = None, verbose: int = 0) -> str:
     """Execute a shell command and return its stdout.
 
@@ -858,6 +1077,12 @@ if __name__ == "__main__":
         default=0,
         choices=[0, 1, 2],
     )
+    _ = parser.add_argument(
+        "--svg-plots",
+        action="store_true",
+        default=False,
+        help="Generate SVG combined plot instead of text-based plots (default: text-based plots).",
+    )
     args: argparse.Namespace = parser.parse_args()
 
     # Configure logging based on verbosity
@@ -951,24 +1176,41 @@ if __name__ == "__main__":
                 logger.error(f"Text report generation task raised an exception: {exc}")
     logger.info("Finished text report generation.")
 
-    # --- Generate Combined Figure (after text reports) ---
-    # This runs sequentially after the parallel tasks above.
-    # Could potentially be parallelized too, but might contend for CPU/memory with plotting.
-    generate_combined_figure(
-        ledger_file=args.ledger,
-        data_dir=args.data_dir,
-        target_currency=args.currency,
-        conversion_args=conversion_args,
-        output_dir=args.output_dir,
-        benchmark_tickers=args.benchmark_ticker,  # Pass list of tickers
-        roi_investment_account=args.roi_investment_account,
-        roi_pnl_account=args.roi_pnl_account,
-        roi_begin_date=args.roi_begin_date,
-        verbose=args.verbose,
-        enable_roi_plots=args.roi_report,
-        ticker_map=ticker_map,
-        currency_map=currency_map,
-    )
+    # --- Generate Plots (text-based by default, SVG if requested) ---
+    if args.svg_plots:
+        # Generate SVG combined figure
+        generate_combined_figure(
+            ledger_file=args.ledger,
+            data_dir=args.data_dir,
+            target_currency=args.currency,
+            conversion_args=conversion_args,
+            output_dir=args.output_dir,
+            benchmark_tickers=args.benchmark_ticker,
+            roi_investment_account=args.roi_investment_account,
+            roi_pnl_account=args.roi_pnl_account,
+            roi_begin_date=args.roi_begin_date,
+            verbose=args.verbose,
+            enable_roi_plots=args.roi_report,
+            ticker_map=ticker_map,
+            currency_map=currency_map,
+        )
+    else:
+        # Generate text-based plots
+        generate_text_plots(
+            ledger_file=args.ledger,
+            data_dir=args.data_dir,
+            target_currency=args.currency,
+            conversion_args=conversion_args,
+            benchmark_tickers=args.benchmark_ticker,
+            roi_investment_account=args.roi_investment_account,
+            roi_pnl_account=args.roi_pnl_account,
+            roi_begin_date=args.roi_begin_date,
+            verbose=args.verbose,
+            enable_roi_plots=args.roi_report,
+            ticker_map=ticker_map,
+            currency_map=currency_map,
+            output_dir=args.output_dir,
+        )
 
     logger.info("All report generation finished.")
 
