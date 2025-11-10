@@ -657,16 +657,9 @@ def generate_text_plots(
                     for i, bench_data in enumerate(benchmark_series):
                         if bench_data is not None and not bench_data.empty:
                             bench_name = benchmark_tickers[i] if i < len(benchmark_tickers) else f"Benchmark {i}"
-                            # Ensure benchmark has datetime index
-                            if not isinstance(bench_data.index, pd.DatetimeIndex):
-                                bench_data.index = pd.to_datetime(bench_data.index)
-                            
-                            # Calculate yearly returns for benchmark
-                            bench_yearly = bench_data.groupby(bench_data.index.year).apply(
-                                lambda x: (1 + x).prod() - 1
-                            )
-                            bench_years = bench_yearly.index.tolist()  # Keep as integers
-                            bench_returns_pct = (bench_yearly * 100).tolist()
+                            # bench_data already has year as index and twr_percent as values
+                            bench_years = bench_data.index.tolist()  # Keep as integers
+                            bench_returns_pct = bench_data.tolist()  # Already in percent
                             
                             # Plot benchmark as a line
                             plt_text.plot(bench_years, bench_returns_pct, label=bench_name)

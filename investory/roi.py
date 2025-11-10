@@ -196,6 +196,28 @@ def get_benchmark_price_on_date(
                 )
                 return None
 
+        # Ensure index is DatetimeIndex for consistent sorting
+        if not isinstance(hist.index, pd.DatetimeIndex):
+            # Convert index values, handling mix of date and datetime objects
+            normalized_index = []
+            for idx_val in hist.index:
+                if isinstance(idx_val, pd.Timestamp):
+                    # Remove timezone if present
+                    normalized_index.append(idx_val.tz_localize(None) if idx_val.tz else idx_val)
+                elif isinstance(idx_val, datetime.datetime):
+                    # Convert to timezone-naive
+                    normalized_index.append(idx_val.replace(tzinfo=None))
+                elif isinstance(idx_val, datetime.date):
+                    # Convert date to datetime
+                    normalized_index.append(datetime.datetime.combine(idx_val, datetime.time()))
+                else:
+                    # Try to parse as datetime
+                    normalized_index.append(pd.to_datetime(idx_val).tz_localize(None) if pd.to_datetime(idx_val).tz else pd.to_datetime(idx_val))
+            hist.index = pd.DatetimeIndex(normalized_index)
+        elif hist.index.tz is not None:
+            # Remove timezone from DatetimeIndex
+            hist.index = hist.index.tz_localize(None)
+        
         hist = hist.sort_index()
 
         if hist.empty:
@@ -214,7 +236,8 @@ def get_benchmark_price_on_date(
         actual_price_date_str = "Unknown Date"
         if isinstance(hist.index, pd.DatetimeIndex) and not hist.index.empty:
             actual_price_date = hist.index[-1]
-            if hasattr(actual_price_date, 'date'):
+            # Convert Timestamp or datetime to date for comparison with target_date
+            if hasattr(actual_price_date, 'date') and callable(actual_price_date.date):
                 actual_price_date = actual_price_date.date()
 
             actual_price_date_str = actual_price_date.strftime("%Y-%m-%d")
