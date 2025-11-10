@@ -214,7 +214,7 @@ def get_benchmark_price_on_date(
         actual_price_date_str = "Unknown Date"
         if isinstance(hist.index, pd.DatetimeIndex) and not hist.index.empty:
             actual_price_date = hist.index[-1]
-            if isinstance(actual_price_date, pd.Timestamp):
+            if hasattr(actual_price_date, 'date'):
                 actual_price_date = actual_price_date.date()
 
             actual_price_date_str = actual_price_date.strftime("%Y-%m-%d")
