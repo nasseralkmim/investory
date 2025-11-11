@@ -261,10 +261,10 @@ def generate_asset_distribution_graph(
     
     df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
 
-    # Avoid problems with negative values
+    # Avoid problems with negative values and filter out zero balances
     negative_filter: pd.Series = df["balance"] < 0
     negative_df: pd.DataFrame = df[negative_filter].copy()
-    df_positive: pd.DataFrame = df[~negative_filter]
+    df_positive: pd.DataFrame = df[df["balance"] > 0]
 
     account_to_color = get_account_colors(ledger)
     colors: list[str] = [
@@ -538,7 +538,7 @@ def generate_text_plots(
         df = df.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
         df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
         
-        df_positive: pd.DataFrame = df[df["balance"] >= 0]
+        df_positive: pd.DataFrame = df[df["balance"] > 0]
         
         if not df_positive.empty:
             plt_text.simple_bar(
@@ -646,8 +646,9 @@ def generate_text_plots(
                 years = yearly_returns.index.tolist()  # Keep as integers
                 returns_pct = (yearly_returns * 100).tolist()
                 
-                # Clear any previous date formatting
+                # Clear any previous date formatting and reset to numeric mode
                 plt_text.clear_figure()
+                plt_text.date_form('')  # Reset date formatting to use numeric values
                 
                 # Plot portfolio performance as a line
                 plt_text.plot(years, returns_pct, label="Portfolio")
