@@ -650,11 +650,15 @@ def generate_text_plots(
                 plt_text.clear_figure()
                 plt_text.date_form('')  # Reset date formatting to use numeric values
                 
-                # Plot portfolio performance as a line
-                plt_text.plot(years, returns_pct, label="Portfolio")
+                # Plot portfolio performance with distinctive style
+                plt_text.plot(years, returns_pct, label="Portfolio", 
+                             marker="hd", color="green+", style="bold")
                 
-                # Add benchmark comparison if available
+                # Add benchmark comparison with different styles
                 if benchmark_series:
+                    benchmark_colors = ["blue+", "magenta+", "cyan+", "yellow+"]
+                    benchmark_markers = ["dot", "sd", "star", "dollar"]
+                    
                     for i, bench_data in enumerate(benchmark_series):
                         if bench_data is not None and not bench_data.empty:
                             bench_name = benchmark_tickers[i] if i < len(benchmark_tickers) else f"Benchmark {i}"
@@ -662,8 +666,13 @@ def generate_text_plots(
                             bench_years = bench_data.index.tolist()  # Keep as integers
                             bench_returns_pct = bench_data.tolist()  # Already in percent
                             
-                            # Plot benchmark as a line
-                            plt_text.plot(bench_years, bench_returns_pct, label=bench_name)
+                            # Use different color and marker for each benchmark
+                            bench_color = benchmark_colors[i % len(benchmark_colors)]
+                            bench_marker = benchmark_markers[i % len(benchmark_markers)]
+                            
+                            # Plot benchmark with distinctive style
+                            plt_text.plot(bench_years, bench_returns_pct, label=bench_name,
+                                         marker=bench_marker, color=bench_color)
                 
                 plt_text.title("Portfolio vs Benchmark Yearly TWR (%)")
                 plt_text.xlabel("Year")

@@ -621,7 +621,23 @@ def get_roi_data(
                 logger.info("Using cached portfolio ROI data (ledger unchanged)")
                 cache_valid = True
             else:
-                logger.info("Cache invalid: ledger or parameters changed")
+                # Debug: show what changed
+                if cached_data.get('ledger_hash') != current_hash:
+                    logger.info("Ledger transactions changed, recalculating ROI")
+                elif cached_data.get('conversion_args') != conversion_args:
+                    logger.debug(f"Cache invalid: conversion_args changed from {cached_data.get('conversion_args')} to {conversion_args}")
+                elif cached_data.get('currency') != currency:
+                    logger.debug(f"Cache invalid: currency changed from {cached_data.get('currency')} to {currency}")
+                elif cached_data.get('begin_date') != begin_date:
+                    logger.debug(f"Cache invalid: begin_date changed from {cached_data.get('begin_date')} to {begin_date}")
+                elif cached_data.get('investment_account') != investment_account:
+                    logger.debug(f"Cache invalid: investment_account changed")
+                elif cached_data.get('pnl_account') != pnl_account:
+                    logger.debug(f"Cache invalid: pnl_account changed")
+                else:
+                    logger.debug("Cache invalid: parameters changed")
+        else:
+            logger.debug("No cache found, calculating fresh ROI data")
 
     # Ensure price data is available (skip if price_files already provided)
     if price_files is None:
