@@ -677,6 +677,10 @@ def generate_text_plots(
                 plt_text.title("Portfolio vs Benchmark Yearly TWR (%)")
                 plt_text.xlabel("Year")
                 plt_text.ylabel("Return (%)")
+                
+                # Add a horizontal line at 0% for reference
+                plt_text.hline(0, color="gray")
+                
                 show_plot()
             else:
                 write_section("", "No ROI data available")
