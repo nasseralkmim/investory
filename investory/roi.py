@@ -8,6 +8,8 @@ This module provides ROI analysis functionality:
 """
 
 import datetime
+import hashlib
+import json
 import logging
 import re
 import subprocess
@@ -22,6 +24,88 @@ import yahooquery as yq
 from . import prices
 
 logger = logging.getLogger(__name__)
+
+
+def get_ledger_hash(ledger_file: str, investment_account: str, pnl_account: str) -> str:
+    """Generate hash of relevant ledger transactions for cache invalidation.
+    
+    Uses hledger register to get all transactions affecting investment/pnl accounts,
+    which is faster than hashing the entire file and more accurate for ROI purposes.
+    """
+    try:
+        # Get all transactions from investment and pnl accounts
+        command = f"hledger -f {ledger_file} register '{investment_account}|{pnl_account}' --output-format=csv"
+        result = subprocess.run(
+            command,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        # Hash the transaction data
+        return hashlib.sha256(result.stdout.encode()).hexdigest()
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Could not generate ledger hash: {e}")
+        # Fallback to file modification time
+        return str(Path(ledger_file).stat().st_mtime)
+
+
+def load_cache(cache_file: Path) -> dict | None:
+    """Load cached data from JSON file."""
+    if not cache_file.exists():
+        return None
+    try:
+        with open(cache_file, 'r') as f:
+            cache = json.load(f)
+            # Convert date strings back to datetime for portfolio data
+            if 'portfolio_data' in cache and cache['portfolio_data']:
+                df = pd.DataFrame(cache['portfolio_data'])
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                cache['portfolio_data'] = df
+            # Convert benchmark data to Series
+            if 'benchmark_data' in cache:
+                for ticker in cache['benchmark_data']:
+                    data = cache['benchmark_data'][ticker]
+                    if data:
+                        series = pd.Series(data['values'], index=data['index'], name=ticker)
+                        cache['benchmark_data'][ticker] = series
+            return cache
+    except (json.JSONDecodeError, ValueError, KeyError) as e:
+        logger.warning(f"Cache file corrupted, ignoring: {e}")
+        return None
+
+
+def save_cache(cache_file: Path, cache_data: dict) -> None:
+    """Save cache data to JSON file."""
+    try:
+        # Convert DataFrames and Series to serializable format
+        serializable = cache_data.copy()
+        
+        if 'portfolio_data' in serializable and isinstance(serializable['portfolio_data'], pd.DataFrame):
+            df = serializable['portfolio_data'].copy()
+            if 'date' in df.columns:
+                df['date'] = df['date'].astype(str)
+            serializable['portfolio_data'] = df.to_dict('list')
+        
+        if 'benchmark_data' in serializable:
+            bm_serializable = {}
+            for ticker, series in serializable['benchmark_data'].items():
+                if isinstance(series, pd.Series):
+                    bm_serializable[ticker] = {
+                        'index': series.index.tolist(),
+                        'values': series.values.tolist()
+                    }
+                else:
+                    bm_serializable[ticker] = series
+            serializable['benchmark_data'] = bm_serializable
+        
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_file, 'w') as f:
+            json.dump(serializable, f, indent=2)
+        logger.debug(f"Saved cache to {cache_file}")
+    except Exception as e:
+        logger.warning(f"Could not save cache: {e}")
 
 
 def run_hledger_command(command: str, stdin_data: str | None = None) -> str:
@@ -264,6 +348,110 @@ def get_benchmark_price_on_date(
         return None
 
 
+def get_benchmark_prices_batch(
+    ticker: str, years: list[int]
+) -> dict[int, tuple[float | None, float | None]]:
+    """Fetch all required benchmark prices in a single API call.
+    
+    Returns dict mapping year to (current_price, previous_year_price).
+    This is much faster than individual calls per date.
+    """
+    if not years:
+        return {}
+    
+    # Determine date range to fetch
+    min_year = min(years)
+    max_year = max(years)
+    current_year = datetime.datetime.now().year
+    
+    # Start from end of year before first year
+    start_date = datetime.date(min_year - 1, 12, 1)
+    # End at today if current year, else end of last year + buffer
+    if max_year >= current_year:
+        end_date = datetime.date.today() + datetime.timedelta(days=1)
+    else:
+        end_date = datetime.date(max_year, 12, 31) + datetime.timedelta(days=20)
+    
+    logger.debug(f"Fetching benchmark {ticker} data from {start_date} to {end_date}")
+    
+    try:
+        ticker_obj = yq.Ticker(ticker, asynchronous=False)
+        hist_data = ticker_obj.history(start=start_date, end=end_date, adj_ohlc=True)
+        
+        if isinstance(hist_data, dict):
+            if ticker not in hist_data or hist_data[ticker].empty:
+                logger.warning(f"No historical data for {ticker}")
+                return {}
+            hist = hist_data[ticker]
+        elif isinstance(hist_data, pd.DataFrame):
+            hist = hist_data
+        else:
+            logger.warning(f"Unexpected data type from yahooquery for {ticker}")
+            return {}
+        
+        if hist.empty or "close" not in hist.columns:
+            logger.warning(f"No close prices for {ticker}")
+            return {}
+        
+        # Handle MultiIndex
+        if isinstance(hist.index, pd.MultiIndex):
+            if ticker in hist.index.get_level_values(0):
+                hist = hist.loc[ticker]
+            else:
+                logger.warning(f"Ticker {ticker} not found in MultiIndex")
+                return {}
+        
+        # Normalize to timezone-naive DatetimeIndex
+        if not isinstance(hist.index, pd.DatetimeIndex):
+            hist.index = pd.to_datetime(hist.index)
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_localize(None)
+        
+        hist = hist.sort_index()
+        
+        # Extract prices for each year
+        results = {}
+        for year in years:
+            # Target date for current period
+            if year == current_year:
+                target_current = datetime.date.today()
+            else:
+                target_current = datetime.date(year, 12, 31)
+            
+            # Target date for previous period
+            target_prev = datetime.date(year - 1, 12, 31)
+            
+            # Find closest price on or before target dates
+            price_current = None
+            price_prev = None
+            
+            # Get price on or before target_current
+            mask_current = hist.index.date <= target_current
+            if mask_current.any():
+                price_current = hist.loc[mask_current, "close"].iloc[-1]
+                if pd.notna(price_current):
+                    price_current = float(price_current)
+                else:
+                    price_current = None
+            
+            # Get price on or before target_prev
+            mask_prev = hist.index.date <= target_prev
+            if mask_prev.any():
+                price_prev = hist.loc[mask_prev, "close"].iloc[-1]
+                if pd.notna(price_prev):
+                    price_prev = float(price_prev)
+                else:
+                    price_prev = None
+            
+            results[year] = (price_current, price_prev)
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error fetching batch prices for {ticker}: {e}")
+        return {}
+
+
 def calculate_benchmark_twr(
     ticker: str, years: list[int]
 ) -> pd.Series | None:
@@ -274,28 +462,25 @@ def calculate_benchmark_twr(
         f"Calculating yearly TWR for benchmark: {ticker} using Yahoo Finance EOY prices"
     )
 
+    # Batch fetch all prices at once (much faster!)
+    prices_by_year = get_benchmark_prices_batch(ticker, years)
+    
+    if not prices_by_year:
+        logger.warning(f"No price data fetched for benchmark: {ticker}")
+        return None
+
     current_calendar_year = datetime.datetime.now().year
     for year in years:
-        # Determine target date for current period's price
-        if year == current_calendar_year:
-            target_date_current = datetime.date.today()
-            price_label = "YTD"
-        else:
-            target_date_current = datetime.date(year, 12, 31)
-            price_label = f"EOY({year})"
-
-        price_current = get_benchmark_price_on_date(ticker, target_date_current)
-
-        # Get EOY price for previous year
-        target_date_prev = datetime.date(year - 1, 12, 31)
-        price_prev = get_benchmark_price_on_date(ticker, target_date_prev)
-
+        price_current, price_prev = prices_by_year.get(year, (None, None))
+        
         if price_current is not None and price_prev is not None:
             if price_prev != 0:
                 yearly_return_pct = ((price_current / price_prev) - 1.0) * 100.0
                 yearly_returns_data.append(
                     {"year": year, "twr_percent": yearly_return_pct}
                 )
+                
+                price_label = "YTD" if year == current_calendar_year else f"EOY({year})"
                 logger.debug(
                     f"  Benchmark {ticker} TWR for {year}: {yearly_return_pct:.2f}% "
                     f"(P_{price_label}={price_current:.2f}, P_EOY({year-1})={price_prev:.2f})"
@@ -387,9 +572,10 @@ def get_roi_data(
     pnl_account: str = "income:financial",
     begin_date: str | None = None,
     currency: str = "$",
-    price_files: list[str] | None = None,  # Optional: reuse already-fetched price files
+    price_files: list[str] | None = None,
+    use_cache: bool = True,
 ) -> tuple[pd.DataFrame | None, list[pd.Series | None]]:
-    """Fetch and calculate ROI data for portfolio and benchmarks.
+    """Fetch and calculate ROI data for portfolio and benchmarks with caching.
     
     Args:
         ledger_file: Path to the main ledger file
@@ -401,6 +587,7 @@ def get_roi_data(
         begin_date: Start date for ROI calculation
         currency: Target currency
         price_files: Optional list of price file paths (if already fetched, avoids re-fetching)
+        use_cache: Whether to use cached ROI data (default: True)
 
     Returns:
         Tuple of (portfolio_df, list of benchmark_series)
@@ -408,22 +595,54 @@ def get_roi_data(
     logger.info(
         f"Fetching ROI data, comparing with benchmarks: {benchmark_tickers}"
     )
+    
+    data_dir = Path(data_dir)
+    cache_file = data_dir / "roi_cache.json"
+    
+    # Check cache validity
+    cache_valid = False
+    cached_data = None
+    
+    if use_cache:
+        cached_data = load_cache(cache_file)
+        if cached_data:
+            # Verify ledger hasn't changed
+            current_hash = get_ledger_hash(ledger_file, investment_account, pnl_account)
+            cache_params_match = (
+                cached_data.get('ledger_hash') == current_hash and
+                cached_data.get('investment_account') == investment_account and
+                cached_data.get('pnl_account') == pnl_account and
+                cached_data.get('begin_date') == begin_date and
+                cached_data.get('currency') == currency and
+                cached_data.get('conversion_args') == conversion_args
+            )
+            
+            if cache_params_match:
+                logger.info("Using cached portfolio ROI data (ledger unchanged)")
+                cache_valid = True
+            else:
+                logger.info("Cache invalid: ledger or parameters changed")
 
     # Ensure price data is available (skip if price_files already provided)
     if price_files is None:
         price_files = prices.ensure_price_data(ledger_file, data_dir, target_currency=currency)
     logger.info(f"Using {len(price_files)} price data files")
 
-    # Get portfolio ROI
-    df_portfolio = get_portfolio_roi(
-        ledger_file=ledger_file,
-        price_files=price_files,
-        conversion_args=conversion_args,
-        investment_account=investment_account,
-        pnl_account=pnl_account,
-        begin_date=begin_date,
-        currency=currency,
-    )
+    # Get portfolio ROI (from cache or fresh)
+    if cache_valid and cached_data and 'portfolio_data' in cached_data:
+        df_portfolio = cached_data['portfolio_data']
+        if df_portfolio is not None and not isinstance(df_portfolio, pd.DataFrame):
+            df_portfolio = pd.DataFrame(df_portfolio)
+    else:
+        df_portfolio = get_portfolio_roi(
+            ledger_file=ledger_file,
+            price_files=price_files,
+            conversion_args=conversion_args,
+            investment_account=investment_account,
+            pnl_account=pnl_account,
+            begin_date=begin_date,
+            currency=currency,
+        )
 
     # Determine years for benchmark calculation
     years_for_calculation: list[int] = []
@@ -444,11 +663,48 @@ def get_roi_data(
 
     logger.debug(f"Years for benchmark calculations: {years_for_calculation}")
 
-    # Calculate benchmark TWRs
+    # Calculate benchmark TWRs (with caching)
     benchmark_series: list[pd.Series | None] = []
+    cached_benchmarks = {}
+    if cache_valid and cached_data and 'benchmark_data' in cached_data:
+        cached_benchmarks = cached_data['benchmark_data']
+    
+    new_benchmark_data = {}
     for ticker in benchmark_tickers:
+        # Check if we have cached data for this ticker with same years
+        if ticker in cached_benchmarks:
+            cached_series = cached_benchmarks[ticker]
+            if isinstance(cached_series, pd.Series):
+                # Verify cached data covers our needed years
+                cached_years = set(cached_series.index.tolist())
+                needed_years = set(years_for_calculation)
+                if needed_years.issubset(cached_years):
+                    logger.info(f"Using cached benchmark data for {ticker}")
+                    # Filter to only needed years
+                    series = cached_series.loc[cached_series.index.isin(years_for_calculation)]
+                    benchmark_series.append(series)
+                    new_benchmark_data[ticker] = series
+                    continue
+        
+        # Fetch fresh data
+        logger.info(f"Fetching fresh benchmark data for {ticker}")
         series = calculate_benchmark_twr(ticker, years_for_calculation)
         benchmark_series.append(series)
+        new_benchmark_data[ticker] = series
+    
+    # Save cache if enabled
+    if use_cache:
+        cache_data = {
+            'ledger_hash': get_ledger_hash(ledger_file, investment_account, pnl_account),
+            'investment_account': investment_account,
+            'pnl_account': pnl_account,
+            'begin_date': begin_date,
+            'currency': currency,
+            'conversion_args': conversion_args,
+            'portfolio_data': df_portfolio,
+            'benchmark_data': new_benchmark_data,
+        }
+        save_cache(cache_file, cache_data)
 
     return df_portfolio, benchmark_series
 
@@ -602,6 +858,7 @@ def generate_roi_report(
     investment_account: str = "assets:investments",
     pnl_account: str = "income:financial",
     begin_date: str | None = None,
+    use_cache: bool = True,
 ) -> None:
     """Generate standalone ROI comparison report."""
     logger.info("Generating ROI report...")
@@ -615,6 +872,7 @@ def generate_roi_report(
         investment_account=investment_account,
         pnl_account=pnl_account,
         begin_date=begin_date,
+        use_cache=use_cache,
     )
 
     # Create plot
