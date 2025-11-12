@@ -24,3 +24,6 @@ ignore = [
   # "E501"                        # line lentgh
 ]
 preview = true
+
+[tool.ruff]
+line-length = 120

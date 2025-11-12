@@ -1,3 +1,4 @@
+# pyright: basic
 """Calculate and visualize Return on Investment (ROI) for portfolios.
 
 This module provides ROI analysis functionality:
@@ -495,7 +496,7 @@ def calculate_benchmark_twr(ticker: str, years: list[int]) -> pd.Series | None:
                 price_label = "YTD" if year == current_calendar_year else f"EOY({year})"
                 logger.debug(
                     f"  Benchmark {ticker} TWR for {year}: {yearly_return_pct:.2f}% "
-                    f"(P_{price_label}={price_current:.2f}, P_EOY({year-1})={price_prev:.2f})"
+                    f"(P_{price_label}={price_current:.2f}, P_EOY({year - 1})={price_prev:.2f})"
                 )
             else:
                 logger.warning(
