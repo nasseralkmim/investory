@@ -250,16 +250,16 @@ def generate_asset_distribution_graph(
     # column 1: account names
     # column 2: account balances
     df: pd.DataFrame = pd.read_csv(csv_data)  # pyright ignore[reportUnknownMemberType]
-    
+
     # Update the currency symbol replacement
     df = df.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    
+
     # Also remove any other commodity symbols that might be present
-    df = df.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
-    
-    df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
+    df = df.replace(r"\s*[A-Z€$₹£¥]+\s*$", "", regex=True)
+
+    df["balance"] = pd.to_numeric(df["balance"], errors="coerce")
 
     # Avoid problems with negative values and filter out zero balances
     negative_filter: pd.Series = df["balance"] < 0
@@ -395,24 +395,24 @@ def generate_asset_evolution_graph(
     # columns id: account names
     # columns values: account balances
     df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
-    
+
     if verbose >= 2:
         logger.info(f"Raw CSV data:\n{output[:500]}")  # Log first 500 chars
-    
+
     # Update the currency symbol replacement
     # The replace operation can return Series or None, causing type issues. Ignore for now.
     df_evo = df_evo.replace(
         re.escape(target_currency) + r"\s*", "", regex=True
     )  # Use target_currency and escape it
-    
+
     # Also remove any other commodity symbols that might be present (e.g., "BTC", "ETH", etc.)
     # This handles cases where conversion to target currency failed
-    df_evo = df_evo.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
-    
+    df_evo = df_evo.replace(r"\s*[A-Z€$₹£¥]+\s*$", "", regex=True)
+
     if verbose >= 2:
         logger.info(f"After currency replacement:\n{df_evo.head()}")
-    
-    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors='coerce')
+
+    df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors="coerce")
     # convert index (dates) to datetime
     df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
 
@@ -467,7 +467,7 @@ def generate_text_plots(
 ):
     """Generate text-based plots using plotext."""
     logger.info("Generating text-based plots...")
-    
+
     # Setup output file path if output_dir is provided
     output_file_path = None
     if output_dir:
@@ -476,19 +476,19 @@ def generate_text_plots(
         # Clear the file first
         with open(output_file_path, "w") as f:
             f.write("")
-    
+
     def write_section(title: str, content: str = ""):
         """Write a section header and optional content to file or stdout."""
         section_text = f"\n{'='*80}\n{title}\n{'='*80}\n"
         if content:
             section_text += content + "\n"
-        
+
         if output_file_path:
             with open(output_file_path, "a") as f:
                 f.write(section_text)
         else:
             print(section_text, end="")
-    
+
     def show_plot():
         """Show or save the plotext figure."""
         if output_file_path:
@@ -497,55 +497,63 @@ def generate_text_plots(
         else:
             plt_text.show()
         plt_text.clear_figure()
-    
+
     # --- Ensure Price Data is Available ---
     logger.info("Ensuring price data is available...")
     try:
         price_files = prices.ensure_price_data(
-            ledger_file, 
-            data_dir, 
-            ticker_map=ticker_map, 
+            ledger_file,
+            data_dir,
+            ticker_map=ticker_map,
             currency_map=currency_map,
-            target_currency=target_currency
+            target_currency=target_currency,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
     except Exception as e:
         logger.warning(f"Could not ensure price data: {e}")
         price_files = []
-    
+
     # --- Plot Asset Distribution ---
     write_section("ASSET DISTRIBUTION")
     try:
         command: list[str] = [
-            "hledger", "-f", ledger_file,
+            "hledger",
+            "-f",
+            ledger_file,
             *conversion_args,
-            "bal", "acct:^assets:investments",
-            "--drop", "2", "--depth", "3",
+            "bal",
+            "acct:^assets:investments",
+            "--drop",
+            "2",
+            "--depth",
+            "3",
             f"--value=end,{target_currency}",
-            "--no-total", "--infer-market-prices",
-            "-O", "csv",
+            "--no-total",
+            "--infer-market-prices",
+            "-O",
+            "csv",
         ]
-        
+
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
         )
         output, _ = process.communicate()
         csv_data = io.StringIO(output)
         df: pd.DataFrame = pd.read_csv(csv_data)
-        
+
         df = df.replace(re.escape(target_currency) + r"\s*", "", regex=True)
-        df = df.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
-        df["balance"] = pd.to_numeric(df["balance"], errors='coerce')
-        
+        df = df.replace(r"\s*[A-Z€$₹£¥]+\s*$", "", regex=True)
+        df["balance"] = pd.to_numeric(df["balance"], errors="coerce")
+
         df_positive: pd.DataFrame = df[df["balance"] > 0]
-        
+
         if not df_positive.empty:
             plt_text.simple_bar(
                 df_positive["account"].tolist(),
                 df_positive["balance"].tolist(),
                 width=100,
-                title=f"Asset Distribution ({target_currency})"
+                title=f"Asset Distribution ({target_currency})",
             )
             show_plot()
         else:
@@ -553,7 +561,7 @@ def generate_text_plots(
     except Exception as e:
         logger.error(f"Error generating text asset distribution: {e}")
         write_section("", f"Error: {e}")
-    
+
     # --- Plot Asset Evolution ---
     write_section("ASSET EVOLUTION")
     try:
@@ -562,44 +570,54 @@ def generate_text_plots(
             for f in os.listdir(data_dir):
                 if f.endswith(".ledger"):
                     data_files_args.extend(["-f", os.path.join(data_dir, f)])
-        
+
         command: list[str] = [
-            "hledger", "-f", ledger_file,
+            "hledger",
+            "-f",
+            ledger_file,
             *data_files_args,
             *conversion_args,
-            "bal", "acct:^assets:investments",
-            "--historical", "--monthly",
-            "--drop", "2", "--depth", "3",
+            "bal",
+            "acct:^assets:investments",
+            "--historical",
+            "--monthly",
+            "--drop",
+            "2",
+            "--depth",
+            "3",
             f"--value=end,{target_currency}",
-            "--no-total", "--infer-market-prices",
-            "-O", "csv", "--transpose",
+            "--no-total",
+            "--infer-market-prices",
+            "-O",
+            "csv",
+            "--transpose",
         ]
-        
+
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
         )
         output, _ = process.communicate()
         csv_data = io.StringIO(output)
         df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
-        
+
         df_evo = df_evo.replace(re.escape(target_currency) + r"\s*", "", regex=True)
-        df_evo = df_evo.replace(r'\s*[A-Z€$₹£¥]+\s*$', '', regex=True)
-        df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors='coerce')
+        df_evo = df_evo.replace(r"\s*[A-Z€$₹£¥]+\s*$", "", regex=True)
+        df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors="coerce")
         df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
         df_evo = df_evo.where(df_evo >= 0)
-        
+
         if not df_evo.empty:
             # Clear any previous date formatting and start fresh
             plt_text.clear_figure()
-            plt_text.date_form('Y-m')
-            
+            plt_text.date_form("Y-m")
+
             # Calculate total portfolio value (sum across all accounts)
             total_value = df_evo.sum(axis=1)
-            dates = [d.strftime('%Y-%m') for d in df_evo.index]
-            
+            dates = [d.strftime("%Y-%m") for d in df_evo.index]
+
             # Plot total portfolio value as the main line
             plt_text.plot(dates, total_value.tolist(), label="Total Portfolio")
-            
+
             plt_text.title(f"Asset Evolution ({target_currency})")
             plt_text.xlabel("Date")
             plt_text.ylabel(f"Value ({target_currency})")
@@ -609,9 +627,10 @@ def generate_text_plots(
     except Exception as e:
         logger.error(f"Error generating text asset evolution: {e}")
         import traceback
+
         logger.debug(traceback.format_exc())
         write_section("", f"Error: {e}")
-    
+
     # --- Plot ROI if enabled ---
     if enable_roi_plots:
         write_section("YEARLY TWR COMPARISON")
@@ -627,72 +646,90 @@ def generate_text_plots(
                 currency=target_currency,
                 price_files=price_files,
             )
-            
+
             if df_portfolio is not None:
                 # Ensure 'date' column exists and is datetime
-                if 'date' in df_portfolio.columns:
-                    df_portfolio['date'] = pd.to_datetime(df_portfolio['date'])
-                    df_portfolio['year'] = df_portfolio['date'].dt.year
+                if "date" in df_portfolio.columns:
+                    df_portfolio["date"] = pd.to_datetime(df_portfolio["date"])
+                    df_portfolio["year"] = df_portfolio["date"].dt.year
                 else:
                     # If date is the index
                     df_portfolio.index = pd.to_datetime(df_portfolio.index)
-                    df_portfolio['year'] = df_portfolio.index.year
-                
+                    df_portfolio["year"] = df_portfolio.index.year
+
                 # Calculate yearly returns for portfolio
-                yearly_returns = df_portfolio.groupby('year')['twr_factor'].apply(
+                yearly_returns = df_portfolio.groupby("year")["twr_factor"].apply(
                     lambda x: x.prod() - 1
                 )
-                
+
                 years = yearly_returns.index.tolist()  # Keep as integers
                 returns_pct = (yearly_returns * 100).tolist()
-                
+
                 # Clear any previous date formatting and reset to numeric mode
                 plt_text.clear_figure()
-                plt_text.date_form('')  # Reset date formatting to use numeric values
-                
+                plt_text.date_form("")  # Reset date formatting to use numeric values
+
                 # Plot portfolio performance with distinctive style
-                plt_text.plot(years, returns_pct, label="Portfolio", 
-                             marker="hd", color="green+", style="bold")
-                
+                plt_text.plot(
+                    years,
+                    returns_pct,
+                    label="Portfolio",
+                    marker="hd",
+                    color="green+",
+                    style="bold",
+                )
+
                 # Add benchmark comparison with different styles
                 if benchmark_series:
                     benchmark_colors = ["blue+", "magenta+", "cyan+", "yellow+"]
                     benchmark_markers = ["dot", "sd", "star", "dollar"]
-                    
+
                     for i, bench_data in enumerate(benchmark_series):
                         if bench_data is not None and not bench_data.empty:
-                            bench_name = benchmark_tickers[i] if i < len(benchmark_tickers) else f"Benchmark {i}"
+                            bench_name = (
+                                benchmark_tickers[i]
+                                if i < len(benchmark_tickers)
+                                else f"Benchmark {i}"
+                            )
                             # bench_data already has year as index and twr_percent as values
                             bench_years = bench_data.index.tolist()  # Keep as integers
-                            bench_returns_pct = bench_data.tolist()  # Already in percent
-                            
+                            bench_returns_pct = (
+                                bench_data.tolist()
+                            )  # Already in percent
+
                             # Use different color and marker for each benchmark
                             bench_color = benchmark_colors[i % len(benchmark_colors)]
                             bench_marker = benchmark_markers[i % len(benchmark_markers)]
-                            
+
                             # Plot benchmark with distinctive style
-                            plt_text.plot(bench_years, bench_returns_pct, label=bench_name,
-                                         marker=bench_marker, color=bench_color)
-                
+                            plt_text.plot(
+                                bench_years,
+                                bench_returns_pct,
+                                label=bench_name,
+                                marker=bench_marker,
+                                color=bench_color,
+                            )
+
                 plt_text.title("Portfolio vs Benchmark Yearly TWR (%)")
                 plt_text.xlabel("Year")
                 plt_text.ylabel("Return (%)")
-                
+
                 # Add a horizontal line at 0% for reference
                 plt_text.hline(0, color="gray")
-                
+
                 show_plot()
             else:
                 write_section("", "No ROI data available")
         except Exception as e:
             logger.error(f"Error generating text ROI plots: {e}")
             import traceback
+
             logger.debug(traceback.format_exc())
             write_section("", f"Error: {e}")
-    
+
     if output_file_path:
         logger.info(f"Summary saved to {output_file_path}")
-    
+
     logger.info("Finished text-based plot generation.")
 
 
@@ -839,7 +876,7 @@ def generate_summary_report(
     )  # Absolute path to summary file
 
     commands = []
-    
+
     # Only include plot reference if SVG plots are being generated
     if include_svg_plot:
         combined_plot_abs = os.path.abspath(
@@ -848,25 +885,25 @@ def generate_summary_report(
         # Calculate relative path from the directory containing summary.org to the plot file
         summary_dir = os.path.dirname(summary_file_abs)
         combined_plot_rel_path = os.path.relpath(combined_plot_abs, start=summary_dir)
-        
+
         # Reference the combined plot using the calculated relative path
         commands.append(
             f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}"
         )
     else:
         # Just create the file without plot reference
-        commands.append(
-            f"echo -en '* Summary Report\n' > {summary_file_abs}"
-        )
-    
+        commands.append(f"echo -en '* Summary Report\n' > {summary_file_abs}")
+
     # Add balance sheet
-    commands.extend([
-        f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
-        f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
-        # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
-        f"echo -en '\n#+end_export' >> {summary_file_abs}",  # Use absolute path for echo command target
-    ])
+    commands.extend(
+        [
+            f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
+            f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
+            # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
+            f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
+            f"echo -en '\n#+end_export' >> {summary_file_abs}",  # Use absolute path for echo command target
+        ]
+    )
 
     for command in commands:
         _ = run_command(command, verbose=verbose)
@@ -894,7 +931,7 @@ def generate_combined_figure(
     logger.info("Generating combined overview figure...")
     if not enable_roi_plots:
         logger.info("ROI plot generation is disabled.")
-    
+
     # --- Ensure Price Data is Available ---
     # Fetch and cache price data for all commodities in the ledger
     # This needs to happen before generating any graphs that require prices
@@ -902,11 +939,11 @@ def generate_combined_figure(
     logger.info("Ensuring price data is available...")
     try:
         price_files = prices.ensure_price_data(
-            ledger_file, 
-            data_dir, 
-            ticker_map=ticker_map, 
+            ledger_file,
+            data_dir,
+            ticker_map=ticker_map,
             currency_map=currency_map,
-            target_currency=target_currency
+            target_currency=target_currency,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
@@ -1135,13 +1172,12 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     else:  # verbose == 2
         logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(levelname)s [%(name)s]: %(message)s"
+            level=logging.DEBUG, format="%(levelname)s [%(name)s]: %(message)s"
         )
-    
+
     # Suppress verbose logging from matplotlib and PIL
-    logging.getLogger('matplotlib').setLevel(logging.WARNING)
-    logging.getLogger('PIL').setLevel(logging.WARNING)
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
 
     # Ensure output directory exists
     os.makedirs(args.output_dir, exist_ok=True)
@@ -1149,14 +1185,14 @@ if __name__ == "__main__":
     # Parse ticker and currency mappings
     ticker_map = {}
     for mapping in args.ticker_map:
-        if ':' in mapping:
-            commodity, ticker = mapping.split(':', 1)
+        if ":" in mapping:
+            commodity, ticker = mapping.split(":", 1)
             ticker_map[commodity] = ticker
-    
+
     currency_map = {}
     for mapping in args.currency_map:
-        if ':' in mapping:
-            commodity, currency = mapping.split(':', 1)
+        if ":" in mapping:
+            commodity, currency = mapping.split(":", 1)
             currency_map[commodity] = currency
 
     # Detect all currencies in the main ledger
