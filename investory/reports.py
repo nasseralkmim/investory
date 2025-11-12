@@ -472,7 +472,7 @@ def generate_text_plots(
     output_file_path = None
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        output_file_path = os.path.join(output_dir, "plots.txt")
+        output_file_path = os.path.join(output_dir, "summary.txt")
         # Clear the file first
         with open(output_file_path, "w") as f:
             f.write("")
@@ -691,7 +691,7 @@ def generate_text_plots(
             write_section("", f"Error: {e}")
     
     if output_file_path:
-        logger.info(f"Text plots saved to {output_file_path}")
+        logger.info(f"Summary saved to {output_file_path}")
     
     logger.info("Finished text-based plot generation.")
 
@@ -829,6 +829,7 @@ def generate_summary_report(
     conversion_args: list[str],
     output_dir: str,
     verbose: int = 0,
+    include_svg_plot: bool = False,
 ):
 
     # Prepare conversion args string for f-string insertion
@@ -836,22 +837,36 @@ def generate_summary_report(
     summary_file_abs = os.path.abspath(
         os.path.join(output_dir, "summary.org")
     )  # Absolute path to summary file
-    combined_plot_abs = os.path.abspath(
-        os.path.join(output_dir, "combined-overview.svg")
-    )  # Absolute path to plot file
-    # Calculate relative path from the directory containing summary.org to the plot file
-    summary_dir = os.path.dirname(summary_file_abs)
-    combined_plot_rel_path = os.path.relpath(combined_plot_abs, start=summary_dir)
 
-    commands = [
-        # Reference the new combined plot using the calculated relative path
-        f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}",  # Use absolute path for echo command target
+    commands = []
+    
+    # Only include plot reference if SVG plots are being generated
+    if include_svg_plot:
+        combined_plot_abs = os.path.abspath(
+            os.path.join(output_dir, "combined-overview.svg")
+        )  # Absolute path to plot file
+        # Calculate relative path from the directory containing summary.org to the plot file
+        summary_dir = os.path.dirname(summary_file_abs)
+        combined_plot_rel_path = os.path.relpath(combined_plot_abs, start=summary_dir)
+        
+        # Reference the combined plot using the calculated relative path
+        commands.append(
+            f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}"
+        )
+    else:
+        # Just create the file without plot reference
+        commands.append(
+            f"echo -en '* Summary Report\n' > {summary_file_abs}"
+        )
+    
+    # Add balance sheet
+    commands.extend([
         f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
         f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
         # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
         f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
         f"echo -en '\n#+end_export' >> {summary_file_abs}",  # Use absolute path for echo command target
-    ]
+    ])
 
     for command in commands:
         _ = run_command(command, verbose=verbose)
@@ -1186,6 +1201,7 @@ if __name__ == "__main__":
             conversion_args,
             args.output_dir,  # Pass output_dir
             args.verbose,
+            args.svg_plots,  # Pass whether SVG plots will be generated
         )
     )
 

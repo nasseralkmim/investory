@@ -103,9 +103,11 @@ def save_cache(cache_file: Path, cache_data: dict) -> None:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_file, 'w') as f:
             json.dump(serializable, f, indent=2)
-        logger.debug(f"Saved cache to {cache_file}")
+        logger.info(f"ROI cache saved to {cache_file}")
     except Exception as e:
         logger.warning(f"Could not save cache: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
 
 def run_hledger_command(command: str, stdin_data: str | None = None) -> str:
