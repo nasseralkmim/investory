@@ -465,26 +465,27 @@ def generate_text_plots(
     currency_map: dict[str, str] | None = None,
     output_dir: str | None = None,
 ):
-    """Generate text-based plots using plotext."""
-    logger.info("Generating text-based plots...")
+    """Generate text-based plots using plotext and add them to summary.org."""
+    logger.info("Generating text-based plots for summary.org...")
 
     # Setup output file path if output_dir is provided
     output_file_path = None
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        output_file_path = os.path.join(output_dir, "summary.txt")
-        # Clear the file first
-        with open(output_file_path, "w") as f:
-            f.write("")
+        output_file_path = os.path.join(output_dir, "summary.org")
+        # Append a header for the plots section
+        with open(output_file_path, "a", encoding="utf-8") as f:
+            f.write("\n* Text-based Plots\n")
 
     def write_section(title: str, content: str = ""):
         """Write a section header and optional content to file or stdout."""
-        section_text = f"\n{'='*80}\n{title}\n{'='*80}\n"
+        # Org-mode subheading
+        section_text = f"\n** {title}\n"
         if content:
             section_text += content + "\n"
 
         if output_file_path:
-            with open(output_file_path, "a") as f:
+            with open(output_file_path, "a", encoding="utf-8") as f:
                 f.write(section_text)
         else:
             print(section_text, end="")
@@ -492,8 +493,13 @@ def generate_text_plots(
     def show_plot():
         """Show or save the plotext figure."""
         if output_file_path:
-            plt_text.build()  # Build the plot first
-            plt_text.save_fig(output_file_path, append=True, keep_colors=False)
+            plot_content = plt_text.build()
+            # Remove ANSI escape codes for clean file output
+            ansi_escape = re.compile(r"(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+            plot_content_no_ansi = ansi_escape.sub("", plot_content)
+            org_block = f"\n{plot_content_no_ansi}\n"
+            with open(output_file_path, "a", encoding="utf-8") as f:
+                f.write(org_block)
         else:
             plt_text.show()
         plt_text.clear_figure()
@@ -515,7 +521,7 @@ def generate_text_plots(
         price_files = []
 
     # --- Plot Asset Distribution ---
-    write_section("ASSET DISTRIBUTION")
+    write_section("Asset Distribution")
     try:
         command: list[str] = [
             "hledger",
@@ -563,7 +569,7 @@ def generate_text_plots(
         write_section("", f"Error: {e}")
 
     # --- Plot Asset Evolution ---
-    write_section("ASSET EVOLUTION")
+    write_section("Asset Evolution")
     try:
         data_files_args: list[str] = []
         if os.path.isdir(data_dir):
@@ -633,7 +639,7 @@ def generate_text_plots(
 
     # --- Plot ROI if enabled ---
     if enable_roi_plots:
-        write_section("YEARLY TWR COMPARISON")
+        write_section("Yearly Twr Comparison")
         try:
             df_portfolio, benchmark_series = roi.get_roi_data(
                 ledger_file=ledger_file,
@@ -898,10 +904,8 @@ def generate_summary_report(
     commands.extend(
         [
             f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
-            f"echo -en '\n#+begin_export html\n' >> {summary_file_abs}",
             # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
             f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
-            f"echo -en '\n#+end_export' >> {summary_file_abs}",  # Use absolute path for echo command target
         ]
     )
 
