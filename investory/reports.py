@@ -473,14 +473,11 @@ def generate_text_plots(
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
         output_file_path = os.path.join(output_dir, "summary.org")
-        # Append a header for the plots section
-        with open(output_file_path, "a", encoding="utf-8") as f:
-            f.write("\n* Text-based Plots\n")
 
     def write_section(title: str, content: str = ""):
         """Write a section header and optional content to file or stdout."""
-        # Org-mode subheading
-        section_text = f"\n** {title}\n"
+        # Org-mode heading
+        section_text = f"\n* {title}\n"
         if content:
             section_text += content + "\n"
 
@@ -495,7 +492,7 @@ def generate_text_plots(
         if output_file_path:
             plot_content = plt_text.build()
             # Remove ANSI escape codes for clean file output
-            ansi_escape = re.compile(r"(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             plot_content_no_ansi = ansi_escape.sub("", plot_content)
             org_block = f"\n{plot_content_no_ansi}\n"
             with open(output_file_path, "a", encoding="utf-8") as f:
@@ -555,10 +552,20 @@ def generate_text_plots(
         df_positive: pd.DataFrame = df[df["balance"] > 0]
 
         if not df_positive.empty:
+            # Calculate percentages
+            total = df_positive["balance"].sum()
+            percentages = (df_positive["balance"] / total * 100).round(1)
+            
+            # Create labels with percentages
+            labels = [
+                f"{account} ({pct}%)"
+                for account, pct in zip(df_positive["account"].tolist(), percentages.tolist())
+            ]
+            
             plt_text.simple_bar(
-                df_positive["account"].tolist(),
+                labels,
                 df_positive["balance"].tolist(),
-                width=100,
+                width=50,
                 title=f"Asset Distribution ({target_currency})",
             )
             show_plot()
@@ -568,8 +575,11 @@ def generate_text_plots(
         logger.error(f"Error generating text asset distribution: {e}")
         write_section("", f"Error: {e}")
 
-    # --- Plot Asset Evolution ---
-    write_section("Asset Evolution")
+    # --- Plot Asset Evolution and Performance Side by Side ---
+    write_section("Asset Evolution and Performance")
+    
+    # Generate Asset Evolution plot
+    evolution_plot = None
     try:
         data_files_args: list[str] = []
         if os.path.isdir(data_dir):
@@ -613,33 +623,31 @@ def generate_text_plots(
         df_evo = df_evo.where(df_evo >= 0)
 
         if not df_evo.empty:
-            # Clear any previous date formatting and start fresh
             plt_text.clear_figure()
             plt_text.date_form("Y-m")
+            plt_text.plotsize(50, 15)
 
-            # Calculate total portfolio value (sum across all accounts)
             total_value = df_evo.sum(axis=1)
             dates = [d.strftime("%Y-%m") for d in df_evo.index]
 
-            # Plot total portfolio value as the main line
             plt_text.plot(dates, total_value.tolist(), label="Total Portfolio")
-
             plt_text.title(f"Asset Evolution ({target_currency})")
             plt_text.xlabel("Date")
             plt_text.ylabel(f"Value ({target_currency})")
-            show_plot()
-        else:
-            write_section("", "No data available for asset evolution")
+            
+            evolution_plot = plt_text.build()
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            evolution_plot = ansi_escape.sub("", evolution_plot)
+            plt_text.clear_figure()
     except Exception as e:
         logger.error(f"Error generating text asset evolution: {e}")
         import traceback
-
         logger.debug(traceback.format_exc())
-        write_section("", f"Error: {e}")
+        evolution_plot = f"Error: {e}"
 
     # --- Plot ROI if enabled ---
+    performance_plot = None
     if enable_roi_plots:
-        write_section("Yearly Twr Comparison")
         try:
             df_portfolio, benchmark_series = roi.get_roi_data(
                 ledger_file=ledger_file,
@@ -654,28 +662,24 @@ def generate_text_plots(
             )
 
             if df_portfolio is not None:
-                # Ensure 'date' column exists and is datetime
                 if "date" in df_portfolio.columns:
                     df_portfolio["date"] = pd.to_datetime(df_portfolio["date"])
                     df_portfolio["year"] = df_portfolio["date"].dt.year
                 else:
-                    # If date is the index
                     df_portfolio.index = pd.to_datetime(df_portfolio.index)
                     df_portfolio["year"] = df_portfolio.index.year
 
-                # Calculate yearly returns for portfolio
                 yearly_returns = df_portfolio.groupby("year")["twr_factor"].apply(
                     lambda x: x.prod() - 1
                 )
 
-                years = yearly_returns.index.tolist()  # Keep as integers
+                years = yearly_returns.index.tolist()
                 returns_pct = (yearly_returns * 100).tolist()
 
-                # Clear any previous date formatting and reset to numeric mode
                 plt_text.clear_figure()
-                plt_text.date_form("")  # Reset date formatting to use numeric values
+                plt_text.date_form("")
+                plt_text.plotsize(50, 15)
 
-                # Plot portfolio performance with distinctive style
                 plt_text.plot(
                     years,
                     returns_pct,
@@ -685,7 +689,6 @@ def generate_text_plots(
                     style="bold",
                 )
 
-                # Add benchmark comparison with different styles
                 if benchmark_series:
                     benchmark_colors = ["blue+", "magenta+", "cyan+", "yellow+"]
                     benchmark_markers = ["dot", "sd", "star", "dollar"]
@@ -697,17 +700,12 @@ def generate_text_plots(
                                 if i < len(benchmark_tickers)
                                 else f"Benchmark {i}"
                             )
-                            # bench_data already has year as index and twr_percent as values
-                            bench_years = bench_data.index.tolist()  # Keep as integers
-                            bench_returns_pct = (
-                                bench_data.tolist()
-                            )  # Already in percent
+                            bench_years = bench_data.index.tolist()
+                            bench_returns_pct = bench_data.tolist()
 
-                            # Use different color and marker for each benchmark
                             bench_color = benchmark_colors[i % len(benchmark_colors)]
                             bench_marker = benchmark_markers[i % len(benchmark_markers)]
 
-                            # Plot benchmark with distinctive style
                             plt_text.plot(
                                 bench_years,
                                 bench_returns_pct,
@@ -719,19 +717,52 @@ def generate_text_plots(
                 plt_text.title("Portfolio vs Benchmark Yearly TWR (%)")
                 plt_text.xlabel("Year")
                 plt_text.ylabel("Return (%)")
-
-                # Add a horizontal line at 0% for reference
                 plt_text.hline(0, color="gray")
 
-                show_plot()
-            else:
-                write_section("", "No ROI data available")
+                performance_plot = plt_text.build()
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                performance_plot = ansi_escape.sub("", performance_plot)
+                plt_text.clear_figure()
         except Exception as e:
             logger.error(f"Error generating text ROI plots: {e}")
             import traceback
-
             logger.debug(traceback.format_exc())
-            write_section("", f"Error: {e}")
+            performance_plot = f"Error: {e}"
+
+    # Combine plots side by side
+    if evolution_plot and performance_plot:
+        evo_lines = evolution_plot.split("\n")
+        perf_lines = performance_plot.split("\n")
+        
+        max_lines = max(len(evo_lines), len(perf_lines))
+        evo_lines.extend([""] * (max_lines - len(evo_lines)))
+        perf_lines.extend([""] * (max_lines - len(perf_lines)))
+        
+        combined = []
+        for evo_line, perf_line in zip(evo_lines, perf_lines):
+            # Pad evolution line to 52 chars (50 + 2 spacing)
+            padded_evo = evo_line.ljust(52)
+            combined.append(padded_evo + perf_line)
+        
+        combined_output = "\n".join(combined) + "\n"
+        
+        if output_file_path:
+            with open(output_file_path, "a", encoding="utf-8") as f:
+                f.write(combined_output)
+        else:
+            print(combined_output)
+    elif evolution_plot:
+        if output_file_path:
+            with open(output_file_path, "a", encoding="utf-8") as f:
+                f.write(evolution_plot + "\n")
+        else:
+            print(evolution_plot)
+    elif performance_plot:
+        if output_file_path:
+            with open(output_file_path, "a", encoding="utf-8") as f:
+                f.write(performance_plot + "\n")
+        else:
+            print(performance_plot)
 
     if output_file_path:
         logger.info(f"Summary saved to {output_file_path}")
@@ -897,23 +928,37 @@ def generate_summary_report(
             f"echo -en '* Portfolio Overview Graph\n[[file:{combined_plot_rel_path}]]\n' > {summary_file_abs}"
         )
     else:
-        # Just create the file without plot reference
-        commands.append(f"echo -en '* Summary Report\n' > {summary_file_abs}")
-
-    # Add balance sheet
-    commands.extend(
-        [
-            f"echo -en '* Summary balance sheet last three years\n' >> {summary_file_abs}",
-            # Add {conv_args_str}, use {target_currency}, remove hardcoded -f for currencies
-            f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",  # Use absolute path for echo command target
-        ]
-    )
+        # Just create the file without plot reference - text plots will be added first
+        commands.append(f"echo -en '' > {summary_file_abs}")
 
     for command in commands:
         _ = run_command(command, verbose=verbose)
 
     if verbose >= 1:
-        print("Completed summary report")
+        print("Completed summary report header")
+
+
+def add_balance_sheet_to_summary(
+    ledger: str,
+    target_currency: str,
+    conversion_args: list[str],
+    output_dir: str,
+    verbose: int = 0,
+):
+    """Add balance sheet section to summary.org after plots."""
+    conv_args_str = " ".join(conversion_args)
+    summary_file_abs = os.path.abspath(os.path.join(output_dir, "summary.org"))
+
+    commands = [
+        f"echo -en '\n* Summary balance sheet last three years\n' >> {summary_file_abs}",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",
+    ]
+
+    for command in commands:
+        _ = run_command(command, verbose=verbose)
+
+    if verbose >= 1:
+        print("Completed balance sheet section")
 
 
 def generate_combined_figure(
@@ -1294,6 +1339,15 @@ if __name__ == "__main__":
             ticker_map=ticker_map,
             currency_map=currency_map,
             output_dir=args.output_dir,
+        )
+        
+        # Add balance sheet to summary after plots
+        add_balance_sheet_to_summary(
+            ledger=args.ledger,
+            target_currency=args.currency,
+            conversion_args=conversion_args,
+            output_dir=args.output_dir,
+            verbose=args.verbose,
         )
 
     logger.info("All report generation finished.")
