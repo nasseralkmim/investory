@@ -834,12 +834,14 @@ def generate_yearly_report(
     ledger: str,
     target_currency: str,
     conversion_args: list[str],
-    data_dir: str,  # Add data_dir parameter
+    data_dir: str,
+    output_dir: str,
     verbose: int = 0,
 ):
-    report_dir = f"reports/{period}"  # Use variable for clarity
-    os.makedirs(report_dir, exist_ok=True)
-
+    """Generate a yearly report with plots and tax information."""
+    # Create single .org file for the year
+    report_file = os.path.join(output_dir, f"{period}.org")
+    
     # Find all .ledger files in data_dir (commodity prices)
     data_files_args: list[str] = []
     if os.path.isdir(data_dir):
@@ -855,46 +857,233 @@ def generate_yearly_report(
         )
     data_files_args_str = " ".join(data_files_args)
 
-    # Prepare conversion args string for f-string insertion
+    # Prepare conversion args string
     conv_args_str = " ".join(conversion_args)
 
-    # Define report file paths
-    is_report_file = os.path.join(report_dir, f"is-{period}.org")
-    bs_report_file = os.path.join(report_dir, f"bs-{period}.org")
-    bs1_temp_file = os.path.join(report_dir, f"bs1-{period}.org")
-    bs2_temp_file = os.path.join(report_dir, f"bs2-{period}.org")
+    # Temp files for cost basis
+    bs1_temp_file = os.path.join(output_dir, f"bs1-{period}.tmp")
+    bs2_temp_file = os.path.join(output_dir, f"bs2-{period}.tmp")
 
     commands = [
-        # Income statement
-        f"echo -en '* Summary income statement\n' > {is_report_file}",  # Start new file
-        f"hledger -f {ledger} is --sort --depth 1 --period 'from {period - 2} to {period + 1}' --tree --pretty=no >> {is_report_file}",
-        f"echo -en '* Income statement\n' >> {is_report_file}",
-        f"hledger -f {ledger} is --sort --depth 2 --monthly --average --period {period} --tree --pretty=no >> {is_report_file}",
-        f"echo -en '* Full Income statement\n' >> {is_report_file}",
-        f"hledger -f {ledger} is --sort --yearly --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
-        f"echo -en '* Full Income statement monthly\n' >> {is_report_file}",
-        f"hledger -f {ledger} is --sort --monthly --average --row-total --period {period} --tree --pretty=no --layout tall >> {is_report_file}",
-        # Balance sheet (needs currency conversion)
-        f"echo -en '* Summary balance sheet last three years\n' > {bs_report_file}",  # Start new file
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from {period - 2} to {period + 1}' --infer-market-prices --value=end,{target_currency} --yearly >> {bs_report_file}",
-        f"echo -en '* Balance sheet valued at period ends\n' >> {bs_report_file}",
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bs --depth 3 --infer-market-prices --value=end,{target_currency} --tree --pretty=no --no-total --period {period} --color=no >> {bs_report_file}",  # Added target_currency to --value=end
-        # Cost basis section
-        f"echo -en '* Investments converted to cost in {target_currency}\n' >> {bs_report_file}",
-        # This first part gets historical cost in original currency (no conversion/data files needed)
-        f"hledger -f {ledger} bal type:AL investments --period 'to {period + 1}' --layout tall --tree --pretty=no --color=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",  # Use > to overwrite temp file
-        # This second part applies conversion. Add {conv_args_str}, {data_files_args_str}, use {target_currency}
-        f"hledger -f {ledger} {data_files_args_str} {conv_args_str} bal type:AL investments --period 'to {period + 1}' --pretty=no --infer-equity --cost --infer-cost --infer-market-prices --drop 3 --color=no | grep -v '                   0' > {bs2_temp_file}",  # Use > to overwrite temp file
-        f"echo -en 'Investments {period}, converted to cost in {target_currency} \n' >> {bs_report_file}",
-        f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {bs_report_file}",
-        f"rm {bs1_temp_file} {bs2_temp_file}",
+        # Create empty file
+        f"echo -en '' > {report_file}",
+    ]
+
+    for command in commands:
+        _ = run_command(command, verbose=verbose)
+    
+    if verbose >= 1:
+        print(f"Generating yearly report for {period}...")
+
+
+def add_yearly_plots(
+    period: int,
+    ledger: str,
+    target_currency: str,
+    conversion_args: list[str],
+    data_dir: str,
+    output_dir: str,
+    verbose: int = 0,
+):
+    """Add side-by-side plots for asset evolution and income statement."""
+    report_file = os.path.join(output_dir, f"{period}.org")
+    
+    # Find all .ledger files in data_dir
+    data_files_args: list[str] = []
+    if os.path.isdir(data_dir):
+        for f in os.listdir(data_dir):
+            if f.endswith(".ledger"):
+                data_files_args.extend(["-f", os.path.join(data_dir, f)])
+    
+    # Generate Asset Evolution plot for the year
+    evolution_plot = None
+    try:
+        command: list[str] = [
+            "hledger",
+            "-f",
+            ledger,
+            *data_files_args,
+            *conversion_args,
+            "bal",
+            "acct:^assets:investments",
+            "--historical",
+            "--monthly",
+            "--drop",
+            "2",
+            "--depth",
+            "3",
+            f"--value=end,{target_currency}",
+            "--no-total",
+            "--infer-market-prices",
+            "-O",
+            "csv",
+            "--transpose",
+            "--period",
+            str(period),
+        ]
+
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output, _ = process.communicate()
+        csv_data = io.StringIO(output)
+        df_evo: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+
+        df_evo = df_evo.replace(re.escape(target_currency) + r"\s*", "", regex=True)
+        df_evo = df_evo.replace(r"\s*[A-Z€$₹£¥]+\s*$", "", regex=True)
+        df_evo = df_evo[df_evo.columns].apply(pd.to_numeric, errors="coerce")
+        df_evo.index = pd.to_datetime(df_evo.index, format="%Y-%m")
+        df_evo = df_evo.where(df_evo >= 0)
+
+        if not df_evo.empty:
+            plt_text.clear_figure()
+            plt_text.date_form("Y-m")
+            plt_text.plotsize(50, 15)
+
+            total_value = df_evo.sum(axis=1)
+            dates = [d.strftime("%Y-%m") for d in df_evo.index]
+
+            plt_text.plot(dates, total_value.tolist(), label="Total Portfolio")
+            plt_text.title(f"Asset Evolution {period} ({target_currency})")
+            plt_text.xlabel("Month")
+            plt_text.ylabel(f"Value ({target_currency})")
+            
+            evolution_plot = plt_text.build()
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            evolution_plot = ansi_escape.sub("", evolution_plot)
+            plt_text.clear_figure()
+    except Exception as e:
+        logger.error(f"Error generating asset evolution for {period}: {e}")
+        evolution_plot = f"Error: {e}"
+
+    # Generate Income Statement plot
+    income_plot = None
+    try:
+        command: list[str] = [
+            "hledger",
+            "-f",
+            ledger,
+            "bal",
+            "type:RX",
+            "--monthly",
+            "--drop",
+            "1",
+            "--depth",
+            "2",
+            "--no-total",
+            "-O",
+            "csv",
+            "--transpose",
+            "--period",
+            str(period),
+        ]
+
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output, _ = process.communicate()
+        csv_data = io.StringIO(output)
+        df_is: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+
+        # Clean currency symbols and convert to numeric
+        df_is = df_is.replace(r"\s*[A-Z€$₹£¥]+\s*", "", regex=True)
+        df_is = df_is[df_is.columns].apply(pd.to_numeric, errors="coerce")
+        df_is.index = pd.to_datetime(df_is.index, format="%Y-%m")
+
+        if not df_is.empty:
+            plt_text.clear_figure()
+            plt_text.date_form("Y-m")
+            plt_text.plotsize(50, 15)
+
+            # Plot total income/expenses
+            total_income = df_is.sum(axis=1)
+            dates = [d.strftime("%Y-%m") for d in df_is.index]
+
+            plt_text.plot(dates, total_income.tolist(), label="Net Income")
+            plt_text.title(f"Income Statement {period}")
+            plt_text.xlabel("Month")
+            plt_text.ylabel("Amount")
+            plt_text.hline(0, color="gray")
+            
+            income_plot = plt_text.build()
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            income_plot = ansi_escape.sub("", income_plot)
+            plt_text.clear_figure()
+    except Exception as e:
+        logger.error(f"Error generating income statement plot for {period}: {e}")
+        income_plot = f"Error: {e}"
+
+    # Write header and combine plots side by side
+    with open(report_file, "a", encoding="utf-8") as f:
+        f.write(f"* {period} Overview\n\n")
+    
+    if evolution_plot and income_plot:
+        evo_lines = evolution_plot.split("\n")
+        inc_lines = income_plot.split("\n")
+        
+        max_lines = max(len(evo_lines), len(inc_lines))
+        evo_lines.extend([""] * (max_lines - len(evo_lines)))
+        inc_lines.extend([""] * (max_lines - len(inc_lines)))
+        
+        combined = []
+        for evo_line, inc_line in zip(evo_lines, inc_lines):
+            padded_evo = evo_line.ljust(52)
+            combined.append(padded_evo + inc_line)
+        
+        with open(report_file, "a", encoding="utf-8") as f:
+            f.write("\n".join(combined) + "\n")
+    
+    if verbose >= 1:
+        print(f"Added plots for {period}")
+
+
+def add_yearly_tax_info(
+    period: int,
+    ledger: str,
+    target_currency: str,
+    conversion_args: list[str],
+    data_dir: str,
+    output_dir: str,
+    verbose: int = 0,
+):
+    """Add tax information: investments in original currency and full income statement."""
+    report_file = os.path.join(output_dir, f"{period}.org")
+    
+    # Find all .ledger files in data_dir
+    data_files_args: list[str] = []
+    if os.path.isdir(data_dir):
+        data_files_args = [
+            f"-f {os.path.join(data_dir, f)}"
+            for f in os.listdir(data_dir)
+            if f.endswith(".ledger")
+        ]
+    data_files_args_str = " ".join(data_files_args)
+    conv_args_str = " ".join(conversion_args)
+
+    # Temp files for cost basis
+    bs1_temp_file = os.path.join(output_dir, f"bs1-{period}.tmp")
+    bs2_temp_file = os.path.join(output_dir, f"bs2-{period}.tmp")
+
+    commands = [
+        # Investments in original currency with cost
+        f"echo -en '\n* Investments (Volume and Cost in Original Currency)\n' >> {report_file}",
+        f"hledger -f {ledger} bal type:AL investments --period 'to {period + 1}' --layout tall --tree --pretty=no --color=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",
+        f"hledger -f {ledger} {data_files_args_str} bal type:AL investments --period 'to {period + 1}' --pretty=no --infer-equity --cost --infer-cost --color=no --no-total --drop 3 | grep -v '                   0' > {bs2_temp_file}",
+        f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {report_file}",
+        
+        # Full income statement monthly for capital gains
+        f"echo -en '\n* Full Income Statement Monthly (for Capital Gains)\n' >> {report_file}",
+        f"hledger -f {ledger} is --sort --monthly --row-total --period {period} --tree --pretty=no --layout tall >> {report_file}",
+        
+        # Cleanup temp files
+        f"rm -f {bs1_temp_file} {bs2_temp_file}",
     ]
 
     for command in commands:
         _ = run_command(command, verbose=verbose)
 
     if verbose >= 1:
-        print(f"Completed report for period: {period}")
+        print(f"Added tax information for {period}")
 
 
 def generate_summary_report(
@@ -1274,7 +1463,8 @@ if __name__ == "__main__":
                 args.ledger,
                 args.currency,
                 conversion_args,
-                args.data_dir,  # Pass data_dir
+                args.data_dir,
+                args.output_dir,
                 args.verbose,
             )
         )
@@ -1304,6 +1494,32 @@ if __name__ == "__main__":
             except Exception as exc:
                 logger.error(f"Text report generation task raised an exception: {exc}")
     logger.info("Finished text report generation.")
+    
+    # --- Add plots and tax info to yearly reports ---
+    logger.info("Adding plots and tax information to yearly reports...")
+    for period in periods:
+        try:
+            add_yearly_plots(
+                period=period,
+                ledger=args.ledger,
+                target_currency=args.currency,
+                conversion_args=conversion_args,
+                data_dir=args.data_dir,
+                output_dir=args.output_dir,
+                verbose=args.verbose,
+            )
+            add_yearly_tax_info(
+                period=period,
+                ledger=args.ledger,
+                target_currency=args.currency,
+                conversion_args=conversion_args,
+                data_dir=args.data_dir,
+                output_dir=args.output_dir,
+                verbose=args.verbose,
+            )
+        except Exception as exc:
+            logger.error(f"Error adding content to yearly report {period}: {exc}")
+    logger.info("Finished yearly report details.")
 
     # --- Generate Plots (text-based by default, SVG if requested) ---
     if args.svg_plots:
