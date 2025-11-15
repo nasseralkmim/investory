@@ -655,7 +655,7 @@ def get_roi_data(
     # Ensure price data is available (skip if price_files already provided)
     if price_files is None:
         price_files = prices.ensure_price_data(
-            ledger_file, data_dir, target_currency=currency
+            ledger_file, data_dir, target_currency=currency, only_nonzero_balance=True
         )
     logger.info(f"Using {len(price_files)} price data files")
 
