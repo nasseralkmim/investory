@@ -344,6 +344,42 @@ def filter_currency_commodities(commodities: list[str]) -> list[str]:
     return investment_assets
 
 
+def get_nonzero_balance_commodities(ledger_file: str) -> set[str]:
+    """Get commodities that have non-zero balances.
+    
+    Returns set of commodity names that appear in accounts with non-zero balance.
+    """
+    nonzero_commodities = set()
+    
+    try:
+        # Get balance report with commodity breakdown
+        output = subprocess.check_output(
+            ["hledger", "-f", ledger_file, "balance", "assets:investments", "--no-total"],
+            text=True
+        )
+        
+        import re
+        # Pattern to match commodity amounts in balance output
+        # Matches patterns like: "10 VWCE", "5.5 BTC", "100.00 ABEV3"
+        pattern = r'[\d\.\,\-]+\s+([A-Z][A-Z0-9]*)'
+        
+        for line in output.splitlines():
+            matches = re.finditer(pattern, line)
+            for match in matches:
+                commodity = match.group(1)
+                # Filter out currency codes
+                currency_codes = {"USD", "EUR", "GBP", "JPY", "BRL", "CAD", "AUD", "CHF"}
+                if commodity not in currency_codes:
+                    nonzero_commodities.add(commodity)
+        
+        logger.debug(f"Found {len(nonzero_commodities)} commodities with non-zero balance")
+        
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Could not get non-zero balance commodities: {e}")
+    
+    return nonzero_commodities
+
+
 def get_crypto_commodities(ledger_file: str) -> set[str]:
     """Detect which commodities are cryptocurrencies based on account paths.
     
@@ -605,6 +641,7 @@ def ensure_price_data(
     currency_map: dict[str, str] | None = None,
     target_currency: str | None = None,
     max_workers: int = 10,
+    only_nonzero_balance: bool = False,
 ) -> list[str]:
     """Ensure all investment assets have price data cached.
 
@@ -615,6 +652,7 @@ def ensure_price_data(
         currency_map: Optional mapping of commodity -> currency symbol (auto-detected if not provided)
         target_currency: If provided, automatically fetch exchange rates to this currency
         max_workers: Maximum parallel workers for fetching prices (default: 10)
+        only_nonzero_balance: If True, only fetch prices for commodities with non-zero balance (default: False)
 
     Returns:
         List of price cache file paths to include in hledger commands
@@ -628,6 +666,12 @@ def ensure_price_data(
     # Get investment commodities
     all_commodities = get_ledger_commodities(ledger_file)
     investment_assets = filter_currency_commodities(all_commodities)
+    
+    # Optionally filter to only non-zero balance commodities
+    if only_nonzero_balance:
+        nonzero_commodities = get_nonzero_balance_commodities(ledger_file)
+        investment_assets = [c for c in investment_assets if c in nonzero_commodities]
+        logger.info(f"Filtered to {len(investment_assets)} assets with non-zero balance")
 
     if not investment_assets:
         logger.warning(f"No investment assets found in {ledger_file}")
