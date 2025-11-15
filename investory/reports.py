@@ -510,6 +510,7 @@ def generate_text_plots(
             ticker_map=ticker_map,
             currency_map=currency_map,
             target_currency=target_currency,
+            only_nonzero_balance=True,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
@@ -1182,6 +1183,7 @@ def generate_combined_figure(
             ticker_map=ticker_map,
             currency_map=currency_map,
             target_currency=target_currency,
+            only_nonzero_balance=True,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
@@ -1556,7 +1558,7 @@ if __name__ == "__main__":
             currency_map=currency_map,
             output_dir=args.output_dir,
         )
-        
+
         # Add balance sheet to summary after plots
         add_balance_sheet_to_summary(
             ledger=args.ledger,
