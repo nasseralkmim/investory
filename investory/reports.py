@@ -1389,14 +1389,19 @@ def add_yearly_tax_info(
                         # Sort by converted value (descending - highest gains first)
                         rows_data.sort(key=lambda x: x[2], reverse=True)
                         
+                        # Calculate maximum width needed for asset names
+                        max_asset_width = max(len(row[0]) for row in rows_data) if rows_data else 5
+                        # Ensure minimum width for "Asset" header
+                        asset_col_width = max(max_asset_width, 5)
+                        
                         # Format header
-                        table_lines.append(f"  {'Asset':45s} {'Original':>30s} {'Converted':>30s}")
-                        table_lines.append(f"  {'-' * 45} {'-' * 30} {'-' * 30}")
+                        table_lines.append(f"  {'Asset':{asset_col_width}s} {'Original':>30s} {'Converted':>30s}")
+                        table_lines.append(f"  {'-' * asset_col_width} {'-' * 30} {'-' * 30}")
                         
                         # Format rows
                         for account_short, orig_val, display_val in rows_data:
                             converted_str = f"{display_val:>+.2f} {target_currency}"
-                            table_lines.append(f"  {account_short:45s} {orig_val:>30s} {converted_str:>30s}")
+                            table_lines.append(f"  {account_short:{asset_col_width}s} {orig_val:>30s} {converted_str:>30s}")
                     else:
                         table_lines.append("  No capital gains data")
                     
