@@ -1476,7 +1476,7 @@ def add_balance_sheet_to_summary(
 
     commands = [
         f"echo -en '\n* Summary balance sheet last three years\n' >> {summary_file_abs}",
-        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=no --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",
+        f"hledger -f {ledger} {conv_args_str} bs --tree --pretty=yes --depth 1 --alias '/^(income|expenses)\b/=equity:retained earnings' --period 'from 2 years ago to today' --infer-market-prices --value=end,{target_currency} --yearly --output-format txt >> {summary_file_abs}",
     ]
 
     for command in commands:
