@@ -1139,7 +1139,30 @@ def add_yearly_tax_info(
                 data_files_args.extend(["-f", os.path.join(data_dir, f)])
     
     try:
-        # Get data in original currencies for the breakdown table
+        # Get data converted to target currency for the breakdown table
+        command_gains_converted: list[str] = [
+            "hledger",
+            "-f",
+            ledger,
+            *data_files_args,
+            *conversion_args,
+            "bal",
+            "acct:capital.gain",
+            f"--value=then,{target_currency}",
+            "--infer-market-prices",
+            "--period",
+            str(period),
+            "--no-total",
+            "-O",
+            "csv",
+        ]
+        
+        process_converted = subprocess.Popen(
+            command_gains_converted, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output_converted, _ = process_converted.communicate()
+        
+        # Get data in original currencies for reference
         command_gains_orig: list[str] = [
             "hledger",
             "-f",
@@ -1159,6 +1182,7 @@ def add_yearly_tax_info(
         output_orig, _ = process.communicate()
         
         # Get data converted to target currency for the plot
+        # Use --value=then to get values at transaction time, not end of period
         command_gains: list[str] = [
             "hledger",
             "-f",
@@ -1167,7 +1191,7 @@ def add_yearly_tax_info(
             *conversion_args,
             "bal",
             "acct:capital.gain",
-            f"--value=end,{target_currency}",
+            f"--value=then,{target_currency}",
             "--infer-market-prices",
             "--monthly",
             "--no-total",
@@ -1183,15 +1207,25 @@ def add_yearly_tax_info(
         )
         output, _ = process.communicate()
         
+        if verbose >= 2:
+            logger.info(f"Capital gains command: {' '.join(command_gains)}")
+            logger.info(f"Capital gains raw output:\n{output}")
+        
         if output.strip():
             csv_data = io.StringIO(output)
             df_gains: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+            
+            if verbose >= 2:
+                logger.info(f"Capital gains dataframe (before cleaning):\n{df_gains}")
             
             # Clean currency symbols and convert to numeric
             df_gains = df_gains.replace(re.escape(target_currency) + r"\s*", "", regex=True)
             df_gains = df_gains.replace(r"\s*[A-Z€$₹£¥]+\s*", "", regex=True)
             df_gains = df_gains[df_gains.columns].apply(pd.to_numeric, errors="coerce")
             df_gains.index = pd.to_datetime(df_gains.index, format="%Y-%m")
+            
+            if verbose >= 2:
+                logger.info(f"Capital gains dataframe (after cleaning):\n{df_gains}")
             
             # Separate income and expenses accounts BEFORE sign conversion
             income_cols = [col for col in df_gains.columns if not col.startswith("expenses:")]
@@ -1202,6 +1236,11 @@ def add_yearly_tax_info(
             if income_cols:
                 df_gains[income_cols] = df_gains[income_cols] * -1
             
+            if verbose >= 2:
+                logger.info(f"Capital gains dataframe (after sign flip):\n{df_gains}")
+                logger.info(f"Income columns: {income_cols}")
+                logger.info(f"Expense columns: {expense_cols}")
+            
             if not df_gains.empty:
                 # Calculate totals
                 if income_cols:
@@ -1211,6 +1250,10 @@ def add_yearly_tax_info(
                 else:
                     total_gains = pd.Series([0] * len(df_gains), index=df_gains.index)
                     total_gains_year = 0
+                
+                if verbose >= 2:
+                    logger.info(f"Total gains per month:\n{total_gains}")
+                    logger.info(f"Total gains for year: {total_gains_year}")
                 
                 if expense_cols:
                     total_taxes_year = df_gains[expense_cols].sum().sum()
@@ -1233,8 +1276,12 @@ def add_yearly_tax_info(
                 dates_reversed = list(reversed(dates))
                 gains_reversed = list(reversed(total_gains.tolist()))
                 
+                if verbose >= 2:
+                    logger.info(f"Plot dates (reversed): {dates_reversed}")
+                    logger.info(f"Plot gains (reversed): {gains_reversed}")
+                
                 plt_text.bar(dates_reversed, gains_reversed, color="green+", orientation="h")
-                plt_text.title(f"Capital Gains {period} ({target_currency})")
+                plt_text.title(f"Capital Gains {period} ({target_currency}) - Horizontal Bar")
                 plt_text.xlabel("Amount")
                 plt_text.ylabel("Month")
                 plt_text.vline(0, color="gray")
@@ -1270,18 +1317,23 @@ def add_yearly_tax_info(
                 with open(report_file, "a", encoding="utf-8") as f:
                     f.write("\n".join(combined) + "\n\n")
                 
-                # Create breakdown table by account (below the plot) - with original currencies
-                # Parse original currency data
-                if output_orig.strip() and income_cols:
+                # Create breakdown table by account (below the plot)
+                # Show both original currency and converted to target currency
+                if output_converted.strip() and output_orig.strip() and income_cols:
+                    # Parse both datasets
+                    csv_data_converted = io.StringIO(output_converted)
+                    df_converted = pd.read_csv(csv_data_converted)
+                    
                     csv_data_orig = io.StringIO(output_orig)
                     df_orig = pd.read_csv(csv_data_orig)
                     
                     # Filter only income accounts (not expenses)
+                    df_converted = df_converted[~df_converted['account'].str.startswith('expenses:')]
                     df_orig = df_orig[~df_orig['account'].str.startswith('expenses:')]
                     
                     # Find common account prefix for title
-                    if not df_orig.empty:
-                        first_account = df_orig['account'].iloc[0]
+                    if not df_converted.empty:
+                        first_account = df_converted['account'].iloc[0]
                         parts = first_account.split(":")
                         if len(parts) >= 3:
                             account_prefix = ":".join(parts[:3])  # e.g., "income:financial investments:capital gain"
@@ -1290,28 +1342,40 @@ def add_yearly_tax_info(
                     else:
                         account_prefix = "capital gain"
                     
-                    # Create table string with original currencies
-                    table_lines = [f"Capital Gains by Source ({account_prefix}):", ""]
+                    # Create table string with both original and converted currencies
+                    table_lines = [
+                        f"Capital Gains by Source ({account_prefix}) - positive = net gain:",
+                        ""
+                    ]
                     
-                    if not df_orig.empty:
-                        # Sort by account name for now (can't easily sort by value with mixed currencies)
+                    if not df_converted.empty:
+                        # Build account map from original data
+                        orig_map = {}
                         for _, row in df_orig.iterrows():
+                            orig_map[row['account']] = str(row['balance'])
+                        
+                        # Parse converted data and build rows
+                        rows_data = []
+                        for _, row in df_converted.iterrows():
                             account = row['account']
-                            balance_str = str(row['balance'])
+                            balance_converted_str = str(row['balance'])
+                            balance_orig_str = orig_map.get(account, "")
                             
-                            # Skip if near zero
-                            # Extract numeric value from balance string to check
+                            # Extract numeric value from converted balance
                             numeric_val = 0
                             try:
-                                # Try to extract first number
-                                nums = re.findall(r'-?\d+\.?\d*', balance_str)
-                                if nums:
-                                    numeric_val = float(nums[0])
+                                # Clean currency symbols and extract number
+                                clean_str = re.sub(r'[A-Z€$₹£¥]+\s*', '', balance_converted_str)
+                                clean_str = clean_str.replace(',', '')
+                                numeric_val = float(clean_str.strip())
                             except:
                                 pass
                             
                             if abs(numeric_val) < 0.01:
                                 continue
+                            
+                            # Multiply by -1 to show gains as positive
+                            display_val = -numeric_val
                             
                             # Extract meaningful name from account (from 4th level onwards)
                             parts = account.split(":")
@@ -1320,9 +1384,19 @@ def add_yearly_tax_info(
                             else:
                                 account_short = account
                             
-                            # Format with proper alignment - account name left-aligned, value right-aligned
-                            # Allow longer names (60 chars) and ensure value alignment
-                            table_lines.append(f"  {account_short:60s} {balance_str:>20s}")
+                            rows_data.append((account_short, balance_orig_str, display_val))
+                        
+                        # Sort by converted value (descending - highest gains first)
+                        rows_data.sort(key=lambda x: x[2], reverse=True)
+                        
+                        # Format header
+                        table_lines.append(f"  {'Asset':45s} {'Original':>30s} {'Converted':>30s}")
+                        table_lines.append(f"  {'-' * 45} {'-' * 30} {'-' * 30}")
+                        
+                        # Format rows
+                        for account_short, orig_val, display_val in rows_data:
+                            converted_str = f"{display_val:>+.2f} {target_currency}"
+                            table_lines.append(f"  {account_short:45s} {orig_val:>30s} {converted_str:>30s}")
                     else:
                         table_lines.append("  No capital gains data")
                     
