@@ -485,10 +485,13 @@ def generate_text_plots(
         os.makedirs(output_dir, exist_ok=True)
         output_file_path = os.path.join(output_dir, "summary.org")
 
-    def write_section(title: str, content: str = ""):
+    def write_section(title: str, content: str = "", is_first: bool = False):
         """Write a section header and optional content to file or stdout."""
-        # Org-mode heading
-        section_text = f"\n* {title}\n"
+        # Org-mode heading - skip leading newline for first section
+        if is_first:
+            section_text = f"* {title}\n"
+        else:
+            section_text = f"\n* {title}\n"
         if content:
             section_text += content + "\n"
 
@@ -530,7 +533,7 @@ def generate_text_plots(
         price_files = []
 
     # --- Plot Asset Distribution ---
-    write_section("Asset Distribution")
+    write_section("Asset Distribution", is_first=True)
     try:
         command: list[str] = [
             "hledger",
@@ -702,8 +705,8 @@ def generate_text_plots(
                 )
 
                 if benchmark_series:
-                    benchmark_colors = ["blue+", "magenta+", "cyan+", "yellow+"]
-                    benchmark_markers = ["dot", "sd", "star", "dollar"]
+                    benchmark_colors = ["cyan+", "magenta+", "yellow+", "blue+"]
+                    benchmark_markers = ["braille", "braille", "braille", "braille"]
 
                     for i, bench_data in enumerate(benchmark_series):
                         if bench_data is not None and not bench_data.empty:
@@ -1035,6 +1038,10 @@ def add_yearly_plots(
             salary_income = df_is[salary_cols].sum(axis=1) if salary_cols else pd.Series([0] * len(df_is), index=df_is.index)
             investment_income = df_is[investment_cols].sum(axis=1) if investment_cols else pd.Series([0] * len(df_is), index=df_is.index)
             
+            # Multiply by -1 to make income positive (hledger credits income accounts)
+            salary_income = salary_income * -1
+            investment_income = investment_income * -1
+            
             # Reverse dates for top-to-bottom display
             dates_reversed = list(reversed(dates))
             salary_reversed = list(reversed(salary_income.tolist()))
@@ -1124,15 +1131,44 @@ def add_yearly_tax_info(
     with open(report_file, "a", encoding="utf-8") as f:
         f.write("\n* Capital Gains\n\n")
     
+    # Find all .ledger files in data_dir for conversion
+    data_files_args: list[str] = []
+    if os.path.isdir(data_dir):
+        for f in os.listdir(data_dir):
+            if f.endswith(".ledger"):
+                data_files_args.extend(["-f", os.path.join(data_dir, f)])
+    
     try:
-        # Find income accounts with "gains"
-        command_gains: list[str] = [
+        # Get data in original currencies for the breakdown table
+        command_gains_orig: list[str] = [
             "hledger",
             "-f",
             ledger,
             "bal",
-            "acct:^income",
-            "acct:gains",
+            "acct:capital.gain",
+            "--period",
+            str(period),
+            "--no-total",
+            "-O",
+            "csv",
+        ]
+        
+        process = subprocess.Popen(
+            command_gains_orig, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output_orig, _ = process.communicate()
+        
+        # Get data converted to target currency for the plot
+        command_gains: list[str] = [
+            "hledger",
+            "-f",
+            ledger,
+            *data_files_args,
+            *conversion_args,
+            "bal",
+            "acct:capital.gain",
+            f"--value=end,{target_currency}",
+            "--infer-market-prices",
             "--monthly",
             "--no-total",
             "-O",
@@ -1152,24 +1188,53 @@ def add_yearly_tax_info(
             df_gains: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
             
             # Clean currency symbols and convert to numeric
+            df_gains = df_gains.replace(re.escape(target_currency) + r"\s*", "", regex=True)
             df_gains = df_gains.replace(r"\s*[A-Z€$₹£¥]+\s*", "", regex=True)
             df_gains = df_gains[df_gains.columns].apply(pd.to_numeric, errors="coerce")
             df_gains.index = pd.to_datetime(df_gains.index, format="%Y-%m")
             
+            # Separate income and expenses accounts BEFORE sign conversion
+            income_cols = [col for col in df_gains.columns if not col.startswith("expenses:")]
+            expense_cols = [col for col in df_gains.columns if col.startswith("expenses:taxes")]
+            
+            # Multiply income by -1 to make gains positive (hledger credits income accounts)
+            # Keep expenses positive (they are already debits, representing money spent)
+            if income_cols:
+                df_gains[income_cols] = df_gains[income_cols] * -1
+            
             if not df_gains.empty:
+                # Calculate totals
+                if income_cols:
+                    df_income_gains = df_gains[income_cols]
+                    total_gains = df_income_gains.sum(axis=1)
+                    total_gains_year = df_income_gains.sum().sum()
+                else:
+                    total_gains = pd.Series([0] * len(df_gains), index=df_gains.index)
+                    total_gains_year = 0
+                
+                if expense_cols:
+                    total_taxes_year = df_gains[expense_cols].sum().sum()
+                else:
+                    total_taxes_year = 0
+                
+                # Calculate tax rate
+                if total_gains_year > 0:
+                    tax_rate = (total_taxes_year / total_gains_year) * 100
+                else:
+                    tax_rate = 0
+                
                 # Create horizontal bar plot (months on Y-axis)
                 plt_text.clear_figure()
                 plt_text.plotsize(50, 10)
                 
-                total_gains = df_gains.sum(axis=1)
-                dates = [d.strftime("%Y-%m") for d in df_gains.index]
+                dates = [d.strftime("%Y-%m") for d in df_income_gains.index]
                 
                 # Reverse for top-to-bottom display
                 dates_reversed = list(reversed(dates))
                 gains_reversed = list(reversed(total_gains.tolist()))
                 
                 plt_text.bar(dates_reversed, gains_reversed, color="green+", orientation="h")
-                plt_text.title(f"Capital Gains {period}")
+                plt_text.title(f"Capital Gains {period} ({target_currency})")
                 plt_text.xlabel("Amount")
                 plt_text.ylabel("Month")
                 plt_text.vline(0, color="gray")
@@ -1179,34 +1244,94 @@ def add_yearly_tax_info(
                 gains_plot = ansi_escape.sub("", gains_plot)
                 plt_text.clear_figure()
                 
-                # Create breakdown table by account
-                # Get total by account across all months
-                account_totals = df_gains.sum(axis=0).sort_values(ascending=False)
+                # Create summary box on the right
+                summary_lines = [
+                    "Summary:",
+                    "",
+                    f"Total Gains:  {total_gains_year:>12.2f} {target_currency}",
+                    f"Total Taxes:  {total_taxes_year:>12.2f} {target_currency}",
+                    f"Tax Rate:     {tax_rate:>12.1f} %",
+                ]
+                summary_str = "\n".join(summary_lines)
                 
-                # Create table string
-                table_lines = ["Breakdown by Source:", ""]
-                for account, total in account_totals.items():
-                    # Extract meaningful name from account
-                    account_short = account.split(":")[-1] if ":" in account else account
-                    table_lines.append(f"  {account_short:20s} {total:>12.2f}")
-                
-                table_str = "\n".join(table_lines)
-                
-                # Combine plot and table side by side
+                # Combine plot and summary side by side
                 plot_lines = gains_plot.split("\n")
-                table_lines_list = table_str.split("\n")
+                summary_lines_list = summary_str.split("\n")
                 
-                max_lines = max(len(plot_lines), len(table_lines_list))
+                max_lines = max(len(plot_lines), len(summary_lines_list))
                 plot_lines.extend([""] * (max_lines - len(plot_lines)))
-                table_lines_list.extend([""] * (max_lines - len(table_lines_list)))
+                summary_lines_list.extend([""] * (max_lines - len(summary_lines_list)))
                 
                 combined = []
-                for plot_line, table_line in zip(plot_lines, table_lines_list):
+                for plot_line, summary_line in zip(plot_lines, summary_lines_list):
                     padded_plot = plot_line.ljust(52)
-                    combined.append(padded_plot + table_line)
+                    combined.append(padded_plot + summary_line)
                 
                 with open(report_file, "a", encoding="utf-8") as f:
                     f.write("\n".join(combined) + "\n\n")
+                
+                # Create breakdown table by account (below the plot) - with original currencies
+                # Parse original currency data
+                if output_orig.strip() and income_cols:
+                    csv_data_orig = io.StringIO(output_orig)
+                    df_orig = pd.read_csv(csv_data_orig)
+                    
+                    # Filter only income accounts (not expenses)
+                    df_orig = df_orig[~df_orig['account'].str.startswith('expenses:')]
+                    
+                    # Find common account prefix for title
+                    if not df_orig.empty:
+                        first_account = df_orig['account'].iloc[0]
+                        parts = first_account.split(":")
+                        if len(parts) >= 3:
+                            account_prefix = ":".join(parts[:3])  # e.g., "income:financial investments:capital gain"
+                        else:
+                            account_prefix = "capital gain"
+                    else:
+                        account_prefix = "capital gain"
+                    
+                    # Create table string with original currencies
+                    table_lines = [f"Capital Gains by Source ({account_prefix}):", ""]
+                    
+                    if not df_orig.empty:
+                        # Sort by account name for now (can't easily sort by value with mixed currencies)
+                        for _, row in df_orig.iterrows():
+                            account = row['account']
+                            balance_str = str(row['balance'])
+                            
+                            # Skip if near zero
+                            # Extract numeric value from balance string to check
+                            numeric_val = 0
+                            try:
+                                # Try to extract first number
+                                nums = re.findall(r'-?\d+\.?\d*', balance_str)
+                                if nums:
+                                    numeric_val = float(nums[0])
+                            except:
+                                pass
+                            
+                            if abs(numeric_val) < 0.01:
+                                continue
+                            
+                            # Extract meaningful name from account (from 4th level onwards)
+                            parts = account.split(":")
+                            if len(parts) > 3:
+                                account_short = ":".join(parts[3:])
+                            else:
+                                account_short = account
+                            
+                            # Format with proper alignment - account name left-aligned, value right-aligned
+                            # Allow longer names (60 chars) and ensure value alignment
+                            table_lines.append(f"  {account_short:60s} {balance_str:>20s}")
+                    else:
+                        table_lines.append("  No capital gains data")
+                    
+                    # Write breakdown table below the plot
+                    with open(report_file, "a", encoding="utf-8") as f:
+                        f.write("\n".join(table_lines) + "\n\n")
+                else:
+                    with open(report_file, "a", encoding="utf-8") as f:
+                        f.write("No capital gains data\n\n")
             else:
                 with open(report_file, "a", encoding="utf-8") as f:
                     f.write("No capital gains data for this period.\n\n")
