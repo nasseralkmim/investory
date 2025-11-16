@@ -1344,7 +1344,7 @@ def add_yearly_tax_info(
                     
                     # Create table string with both original and converted currencies
                     table_lines = [
-                        f"Capital Gains by Source ({account_prefix}) - positive = net gain:",
+                        f"Capital Gains by Source ({account_prefix})",
                         ""
                     ]
                     
