@@ -203,12 +203,23 @@ def get_ledger_years(ledger_file: str, verbose: int = 0) -> list[int]:
 
     for line in stats_output.split("\n"):
         # Handle different hledger versions/outputs for date span
-        if line.startswith("Transactions span") or line.startswith("Date range"):
+        if line.startswith("Transactions span") or line.startswith("Date range") or line.startswith("Txns span"):
             span = line.split(":")[1].strip()
-            start_year, end_year = map(
-                lambda x: int(x.split("-")[0]), span.split(" to ")
-            )
-            return list(range(start_year, end_year + 1))
+            # Extract the date range, ignoring the days count in parentheses
+            date_range = span.split("(")[0].strip() if "(" in span else span
+            parts = date_range.split(" to ")
+            if len(parts) == 2:
+                try:
+                    start_year = int(parts[0].split("-")[0])
+                    end_year = int(parts[1].split("-")[0])
+                    return list(range(start_year, end_year + 1))
+                except (ValueError, IndexError):
+                    if verbose >= 1:
+                        print(
+                            f"Warning: Could not parse date range: {span}",
+                            file=sys.stderr,
+                        )
+                    return []
     return []  # Return an empty list if no span is found
 
 
@@ -896,7 +907,7 @@ def add_yearly_plots(
             if f.endswith(".ledger"):
                 data_files_args.extend(["-f", os.path.join(data_dir, f)])
     
-    # Generate Asset Evolution plot for the year
+    # Generate Asset Evolution plot for the year - Top 3 assets
     evolution_plot = None
     try:
         command: list[str] = [
@@ -941,10 +952,24 @@ def add_yearly_plots(
             plt_text.date_form("Y-m")
             plt_text.plotsize(50, 15)
 
-            total_value = df_evo.sum(axis=1)
+            # Find top 3 assets by final value
+            final_values = df_evo.iloc[-1].sort_values(ascending=False)
+            top_assets = final_values.head(3).index.tolist()
+            
             dates = [d.strftime("%Y-%m") for d in df_evo.index]
-
-            plt_text.plot(dates, total_value.tolist(), label="Total Portfolio")
+            
+            # Plot top assets as separate lines (up to 3)
+            colors = ["green+", "blue+", "magenta+"]
+            for i, asset in enumerate(top_assets):
+                # Extract short name (3rd level)
+                short_name = asset.split(":")[-1] if ":" in asset else asset
+                plt_text.plot(
+                    dates, 
+                    df_evo[asset].tolist(), 
+                    label=short_name,
+                    color=colors[i % len(colors)]
+                )
+            
             plt_text.title(f"Asset Evolution {period} ({target_currency})")
             plt_text.xlabel("Month")
             plt_text.ylabel(f"Value ({target_currency})")
@@ -953,11 +978,13 @@ def add_yearly_plots(
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             evolution_plot = ansi_escape.sub("", evolution_plot)
             plt_text.clear_figure()
+        else:
+            evolution_plot = "No asset evolution data for this period."
     except Exception as e:
         logger.error(f"Error generating asset evolution for {period}: {e}")
         evolution_plot = f"Error: {e}"
 
-    # Generate Income Statement plot
+    # Generate Income Statement plot - Separate salary vs investment income
     income_plot = None
     try:
         command: list[str] = [
@@ -965,7 +992,7 @@ def add_yearly_plots(
             "-f",
             ledger,
             "bal",
-            "type:RX",
+            "acct:^income",
             "--monthly",
             "--drop",
             "1",
@@ -993,23 +1020,36 @@ def add_yearly_plots(
 
         if not df_is.empty:
             plt_text.clear_figure()
-            plt_text.date_form("Y-m")
             plt_text.plotsize(50, 15)
 
-            # Plot total income/expenses
-            total_income = df_is.sum(axis=1)
             dates = [d.strftime("%Y-%m") for d in df_is.index]
-
-            plt_text.plot(dates, total_income.tolist(), label="Net Income")
-            plt_text.title(f"Income Statement {period}")
-            plt_text.xlabel("Month")
-            plt_text.ylabel("Amount")
-            plt_text.hline(0, color="gray")
+            
+            # Separate salary and investment income
+            salary_cols = [col for col in df_is.columns if "salary" in col.lower()]
+            investment_cols = [col for col in df_is.columns if "investment" in col.lower()]
+            
+            salary_income = df_is[salary_cols].sum(axis=1) if salary_cols else pd.Series([0] * len(df_is), index=df_is.index)
+            investment_income = df_is[investment_cols].sum(axis=1) if investment_cols else pd.Series([0] * len(df_is), index=df_is.index)
+            
+            # Reverse dates for top-to-bottom display
+            dates_reversed = list(reversed(dates))
+            salary_reversed = list(reversed(salary_income.tolist()))
+            investment_reversed = list(reversed(investment_income.tolist()))
+            
+            # Plot as horizontal bars (months on Y-axis)
+            plt_text.bar(dates_reversed, salary_reversed, label="Salary", color="blue+", orientation="h")
+            plt_text.bar(dates_reversed, investment_reversed, label="Investments", color="green+", orientation="h")
+            
+            plt_text.title(f"Income {period}")
+            plt_text.xlabel("Amount")
+            plt_text.ylabel("Month")
             
             income_plot = plt_text.build()
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
             income_plot = ansi_escape.sub("", income_plot)
             plt_text.clear_figure()
+        else:
+            income_plot = "No income data for this period."
     except Exception as e:
         logger.error(f"Error generating income statement plot for {period}: {e}")
         income_plot = f"Error: {e}"
@@ -1047,7 +1087,7 @@ def add_yearly_tax_info(
     output_dir: str,
     verbose: int = 0,
 ):
-    """Add tax information: investments in original currency and full income statement."""
+    """Add tax information: investments in original currency and capital gains."""
     report_file = os.path.join(output_dir, f"{period}.org")
     
     # Find all .ledger files in data_dir
@@ -1059,30 +1099,92 @@ def add_yearly_tax_info(
             if f.endswith(".ledger")
         ]
     data_files_args_str = " ".join(data_files_args)
-    conv_args_str = " ".join(conversion_args)
 
     # Temp files for cost basis
     bs1_temp_file = os.path.join(output_dir, f"bs1-{period}.tmp")
     bs2_temp_file = os.path.join(output_dir, f"bs2-{period}.tmp")
 
+    # Section 1: Asset Holdings for Tax Purposes
     commands = [
-        # Investments in original currency with cost
-        f"echo -en '\n* Investments (Volume and Cost in Original Currency)\n' >> {report_file}",
+        f"echo -en '\n* Asset Holdings (Volume and Cost in Original Currency)\n' >> {report_file}",
         f"hledger -f {ledger} bal type:AL investments --period 'to {period + 1}' --layout tall --tree --pretty=no --color=no --drop 5 --depth 5 --no-total > {bs1_temp_file}",
         f"hledger -f {ledger} {data_files_args_str} bal type:AL investments --period 'to {period + 1}' --pretty=no --infer-equity --cost --infer-cost --color=no --no-total --drop 3 | grep -v '                   0' > {bs2_temp_file}",
         f"paste {bs1_temp_file} {bs2_temp_file} | column -s $'\\t' -t >> {report_file}",
-        
-        # Full income statement monthly for capital gains
-        f"echo -en '\n* Full Income Statement Monthly (for Capital Gains)\n' >> {report_file}",
-        f"hledger -f {ledger} is --sort --monthly --row-total --period {period} --tree --pretty=no --layout tall >> {report_file}",
-        
-        # Cleanup temp files
         f"rm -f {bs1_temp_file} {bs2_temp_file}",
     ]
 
     for command in commands:
         _ = run_command(command, verbose=verbose)
-
+    
+    # Section 2: Capital Gains
+    with open(report_file, "a", encoding="utf-8") as f:
+        f.write("\n* Capital Gains\n\n")
+    
+    try:
+        # Find income accounts with "gains"
+        command_gains: list[str] = [
+            "hledger",
+            "-f",
+            ledger,
+            "bal",
+            "acct:^income",
+            "acct:gains",
+            "--monthly",
+            "--no-total",
+            "-O",
+            "csv",
+            "--transpose",
+            "--period",
+            str(period),
+        ]
+        
+        process = subprocess.Popen(
+            command_gains, stdout=subprocess.PIPE, shell=False, universal_newlines=True
+        )
+        output, _ = process.communicate()
+        
+        if output.strip():
+            csv_data = io.StringIO(output)
+            df_gains: pd.DataFrame = pd.read_csv(csv_data, index_col=0)
+            
+            # Clean currency symbols and convert to numeric
+            df_gains = df_gains.replace(r"\s*[A-Z€$₹£¥]+\s*", "", regex=True)
+            df_gains = df_gains[df_gains.columns].apply(pd.to_numeric, errors="coerce")
+            df_gains.index = pd.to_datetime(df_gains.index, format="%Y-%m")
+            
+            if not df_gains.empty:
+                plt_text.clear_figure()
+                plt_text.date_form("Y-m")
+                plt_text.plotsize(50, 10)
+                
+                total_gains = df_gains.sum(axis=1)
+                dates = [d.strftime("%Y-%m") for d in df_gains.index]
+                
+                plt_text.bar(dates, total_gains.tolist(), color="green+")
+                plt_text.title(f"Capital Gains {period}")
+                plt_text.xlabel("Month")
+                plt_text.ylabel("Amount")
+                plt_text.hline(0, color="gray")
+                
+                gains_plot = plt_text.build()
+                ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+                gains_plot = ansi_escape.sub("", gains_plot)
+                plt_text.clear_figure()
+                
+                with open(report_file, "a", encoding="utf-8") as f:
+                    f.write(gains_plot + "\n")
+            else:
+                with open(report_file, "a", encoding="utf-8") as f:
+                    f.write("No capital gains data for this period.\n\n")
+        else:
+            with open(report_file, "a", encoding="utf-8") as f:
+                f.write("No capital gains data for this period.\n\n")
+                
+    except Exception as e:
+        logger.error(f"Error generating capital gains for {period}: {e}")
+        with open(report_file, "a", encoding="utf-8") as f:
+            f.write(f"Error: {e}\n\n")
+    
     if verbose >= 1:
         print(f"Added tax information for {period}")
 

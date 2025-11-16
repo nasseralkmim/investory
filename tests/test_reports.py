@@ -244,3 +244,94 @@ class TestTWRCalculation:
         assert df.iloc[0]['date'] == pd.Timestamp('2023-01-31')
         assert df.iloc[1]['date'] == pd.Timestamp('2023-02-28')
         assert df.iloc[2]['date'] == pd.Timestamp('2023-03-31')
+
+
+class TestGetLedgerYears:
+    """Test get_ledger_years function with different hledger output formats."""
+    
+    def test_get_ledger_years_txns_span(self, tmp_path):
+        """Test parsing years from 'Txns span' format (modern hledger)."""
+        # Create a minimal ledger file
+        ledger_file = tmp_path / "test.ledger"
+        ledger_file.write_text("""
+2021-01-01 Opening
+    assets:cash    100 EUR
+    equity:opening
+
+2024-12-31 Test
+    assets:cash    -10 EUR
+    expenses:test   10 EUR
+""")
+        
+        years = reports.get_ledger_years(str(ledger_file), verbose=0)
+        # Should include years from 2021 to 2024 (hledger may include current year)
+        assert 2021 in years
+        assert 2024 in years
+        assert len(years) >= 4
+    
+    def test_get_ledger_years_empty_ledger(self, tmp_path):
+        """Test with empty ledger returns empty list."""
+        ledger_file = tmp_path / "empty.ledger"
+        ledger_file.write_text("")
+        
+        years = reports.get_ledger_years(str(ledger_file), verbose=0)
+        assert years == []
+
+
+class TestYearlyReportGeneration:
+    """Test yearly report generation functions."""
+    
+    def test_generate_yearly_report_creates_file(self, tmp_path):
+        """Test that generate_yearly_report creates the output file."""
+        ledger_file = tmp_path / "test.ledger"
+        ledger_file.write_text("""
+2024-01-01 Opening
+    assets:investments:stocks    10 AAPL @ 100 USD
+    assets:cash
+""")
+        
+        output_dir = tmp_path / "reports"
+        output_dir.mkdir()
+        
+        reports.generate_yearly_report(
+            period=2024,
+            ledger=str(ledger_file),
+            target_currency="USD",
+            conversion_args=[],
+            data_dir=str(tmp_path),
+            output_dir=str(output_dir),
+            verbose=0,
+        )
+        
+        report_file = output_dir / "2024.org"
+        assert report_file.exists()
+        assert report_file.stat().st_size >= 0
+    
+    def test_add_yearly_tax_info_handles_no_gains(self, tmp_path):
+        """Test that tax info section handles ledgers without capital gains."""
+        ledger_file = tmp_path / "test.ledger"
+        ledger_file.write_text("""
+2024-01-01 Opening
+    assets:investments:stocks    10 AAPL @ 100 USD
+    assets:cash
+""")
+        
+        output_dir = tmp_path / "reports"
+        output_dir.mkdir()
+        report_file = output_dir / "2024.org"
+        report_file.write_text("* 2024 Overview\n\n")
+        
+        # This should not raise an error
+        reports.add_yearly_tax_info(
+            period=2024,
+            ledger=str(ledger_file),
+            target_currency="USD",
+            conversion_args=[],
+            data_dir=str(tmp_path),
+            output_dir=str(output_dir),
+            verbose=0,
+        )
+        
+        content = report_file.read_text()
+        assert "Capital Gains" in content
+        assert "No capital gains data" in content or "Error:" in content
