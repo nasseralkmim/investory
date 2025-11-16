@@ -958,8 +958,11 @@ def add_yearly_plots(
             
             dates = [d.strftime("%Y-%m") for d in df_evo.index]
             
-            # Plot top assets as separate lines (up to 3)
-            colors = ["green+", "blue+", "magenta+"]
+            # Plot top assets as separate lines (up to 3) with very different markers
+            # Note: Using markers that are visually distinct in terminal
+            markers = ["braille", "dot", "fhd"]
+            colors = ["green+", "cyan+", "yellow+"]
+            
             for i, asset in enumerate(top_assets):
                 # Extract short name (3rd level)
                 short_name = asset.split(":")[-1] if ":" in asset else asset
@@ -967,7 +970,8 @@ def add_yearly_plots(
                     dates, 
                     df_evo[asset].tolist(), 
                     label=short_name,
-                    color=colors[i % len(colors)]
+                    color=colors[i % len(colors)],
+                    marker=markers[i % len(markers)]
                 )
             
             plt_text.title(f"Asset Evolution {period} ({target_currency})")
@@ -1036,9 +1040,9 @@ def add_yearly_plots(
             salary_reversed = list(reversed(salary_income.tolist()))
             investment_reversed = list(reversed(investment_income.tolist()))
             
-            # Plot as horizontal bars (months on Y-axis)
-            plt_text.bar(dates_reversed, salary_reversed, label="Salary", color="blue+", orientation="h")
-            plt_text.bar(dates_reversed, investment_reversed, label="Investments", color="green+", orientation="h")
+            # Plot as horizontal bars (months on Y-axis) with very different markers
+            plt_text.bar(dates_reversed, salary_reversed, label="Salary", color="cyan+", orientation="h", marker="dot")
+            plt_text.bar(dates_reversed, investment_reversed, label="Investments", color="yellow+", orientation="h", marker="fhd")
             
             plt_text.title(f"Income {period}")
             plt_text.xlabel("Amount")
@@ -1153,26 +1157,56 @@ def add_yearly_tax_info(
             df_gains.index = pd.to_datetime(df_gains.index, format="%Y-%m")
             
             if not df_gains.empty:
+                # Create horizontal bar plot (months on Y-axis)
                 plt_text.clear_figure()
-                plt_text.date_form("Y-m")
                 plt_text.plotsize(50, 10)
                 
                 total_gains = df_gains.sum(axis=1)
                 dates = [d.strftime("%Y-%m") for d in df_gains.index]
                 
-                plt_text.bar(dates, total_gains.tolist(), color="green+")
+                # Reverse for top-to-bottom display
+                dates_reversed = list(reversed(dates))
+                gains_reversed = list(reversed(total_gains.tolist()))
+                
+                plt_text.bar(dates_reversed, gains_reversed, color="green+", orientation="h")
                 plt_text.title(f"Capital Gains {period}")
-                plt_text.xlabel("Month")
-                plt_text.ylabel("Amount")
-                plt_text.hline(0, color="gray")
+                plt_text.xlabel("Amount")
+                plt_text.ylabel("Month")
+                plt_text.vline(0, color="gray")
                 
                 gains_plot = plt_text.build()
                 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
                 gains_plot = ansi_escape.sub("", gains_plot)
                 plt_text.clear_figure()
                 
+                # Create breakdown table by account
+                # Get total by account across all months
+                account_totals = df_gains.sum(axis=0).sort_values(ascending=False)
+                
+                # Create table string
+                table_lines = ["Breakdown by Source:", ""]
+                for account, total in account_totals.items():
+                    # Extract meaningful name from account
+                    account_short = account.split(":")[-1] if ":" in account else account
+                    table_lines.append(f"  {account_short:20s} {total:>12.2f}")
+                
+                table_str = "\n".join(table_lines)
+                
+                # Combine plot and table side by side
+                plot_lines = gains_plot.split("\n")
+                table_lines_list = table_str.split("\n")
+                
+                max_lines = max(len(plot_lines), len(table_lines_list))
+                plot_lines.extend([""] * (max_lines - len(plot_lines)))
+                table_lines_list.extend([""] * (max_lines - len(table_lines_list)))
+                
+                combined = []
+                for plot_line, table_line in zip(plot_lines, table_lines_list):
+                    padded_plot = plot_line.ljust(52)
+                    combined.append(padded_plot + table_line)
+                
                 with open(report_file, "a", encoding="utf-8") as f:
-                    f.write(gains_plot + "\n")
+                    f.write("\n".join(combined) + "\n\n")
             else:
                 with open(report_file, "a", encoding="utf-8") as f:
                     f.write("No capital gains data for this period.\n\n")
