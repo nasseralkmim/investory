@@ -50,6 +50,30 @@ def get_ledger_hash(ledger_file: str, investment_account: str, pnl_account: str)
         return str(Path(ledger_file).stat().st_mtime)
 
 
+def get_price_files_hash(price_files: list[str]) -> str:
+    """Generate hash of price files for cache invalidation.
+    
+    Combines file paths and modification times to detect when price data changes.
+    """
+    try:
+        # Create a hash from file paths and modification times
+        hash_input = []
+        for pf in sorted(price_files):  # Sort for consistent ordering
+            path = Path(pf)
+            if path.exists():
+                # Include both path and mtime
+                hash_input.append(f"{pf}:{path.stat().st_mtime}")
+            else:
+                hash_input.append(f"{pf}:missing")
+        
+        combined = "|".join(hash_input)
+        return hashlib.sha256(combined.encode()).hexdigest()
+    except Exception as e:
+        logger.warning(f"Could not generate price files hash: {e}")
+        # Fallback to simple concatenation of paths
+        return hashlib.sha256("|".join(sorted(price_files)).encode()).hexdigest()
+
+
 def load_cache(cache_file: Path) -> dict | None:
     """Load cached data from JSON file."""
     if not cache_file.exists():
@@ -655,9 +679,17 @@ def get_roi_data(
     # Ensure price data is available (skip if price_files already provided)
     if price_files is None:
         price_files = prices.ensure_price_data(
-            ledger_file, data_dir, target_currency=currency, only_nonzero_balance=True
+            ledger_file, data_dir, target_currency=currency, only_nonzero_balance=False
         )
     logger.info(f"Using {len(price_files)} price data files")
+    
+    # Validate cache against price files
+    if cache_valid and cached_data:
+        current_price_hash = get_price_files_hash(price_files)
+        cached_price_hash = cached_data.get("price_files_hash")
+        if current_price_hash != cached_price_hash:
+            logger.info("Price data changed, recalculating ROI")
+            cache_valid = False
 
     # Get portfolio ROI (from cache or fresh)
     if cache_valid and cached_data and "portfolio_data" in cached_data:
@@ -736,6 +768,7 @@ def get_roi_data(
             "begin_date": begin_date,
             "currency": currency,
             "conversion_args": conversion_args,
+            "price_files_hash": get_price_files_hash(price_files),
             "portfolio_data": df_portfolio,
             "benchmark_data": new_benchmark_data,
         }

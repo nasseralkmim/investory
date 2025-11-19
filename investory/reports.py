@@ -524,7 +524,7 @@ def generate_text_plots(
             ticker_map=ticker_map,
             currency_map=currency_map,
             target_currency=target_currency,
-            only_nonzero_balance=True,
+            only_nonzero_balance=False,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
@@ -1523,7 +1523,7 @@ def generate_combined_figure(
             ticker_map=ticker_map,
             currency_map=currency_map,
             target_currency=target_currency,
-            only_nonzero_balance=True,
+            only_nonzero_balance=False,
         )
         if verbose >= 1 and price_files:
             logger.info(f"Price data cached in: {', '.join(price_files)}")
